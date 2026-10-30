@@ -38,8 +38,20 @@ pub(super) enum DeliveryOutcome {
 }
 
 /// Map a Herdr agent transition to the APNs alert body. `pane_id`/`workspace_id`
-/// are the public API ids so the mobile client can deep-link.
+/// are the public API ids so the mobile client can deep-link. `session` names the
+/// herdr session that sent it (`default` for the unnamed one): pane ids repeat
+/// across sessions, so the client needs it to open the right pane.
 pub(super) fn payload_body(notification: &PushNotification) -> String {
+    let session = crate::session::active_name();
+    payload_body_in(
+        notification,
+        session
+            .as_deref()
+            .unwrap_or(crate::session::DEFAULT_SESSION_NAME),
+    )
+}
+
+fn payload_body_in(notification: &PushNotification, session: &str) -> String {
     let mut payload = serde_json::json!({
         "aps": {
             "alert": {
@@ -50,6 +62,7 @@ pub(super) fn payload_body(notification: &PushNotification) -> String {
         },
         "pane_id": notification.pane_id,
         "workspace_id": notification.workspace_id,
+        "session": session,
     });
     // A gram alert deep-links to the app's Gram page, not a pane. The `gram`
     // marker lets the client branch on tap; `pane_id`/`workspace_id` are empty
@@ -365,6 +378,17 @@ mod tests {
         assert!(payload.get("herdr_ask").is_none());
         assert!(payload["aps"].get("category").is_none());
         assert!(payload["aps"].get("mutable-content").is_none());
+    }
+
+    #[test]
+    fn payload_body_names_the_sending_session() {
+        let named: serde_json::Value =
+            serde_json::from_str(&payload_body_in(&sample_notification(), "bot-r")).unwrap();
+        assert_eq!(named["session"], "bot-r");
+        assert_eq!(named["pane_id"], "w1-1");
+        let default: serde_json::Value =
+            serde_json::from_str(&payload_body_in(&sample_notification(), "default")).unwrap();
+        assert_eq!(default["session"], "default");
     }
 
     #[test]

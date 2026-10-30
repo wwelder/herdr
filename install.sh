@@ -9,8 +9,8 @@ set -eu
 set -f
 umask 077
 
-DEFAULT_MANIFEST_URL="https://raw.githubusercontent.com/jerryfane/herdr/master/distribution/preview.json"
-EXPECTED_RELEASE_ROOT="https://github.com/jerryfane/herdr/releases/download"
+DEFAULT_MANIFEST_URL="https://raw.githubusercontent.com/wwelder/herdr/master/distribution/preview.json"
+EXPECTED_RELEASE_ROOT="https://github.com/wwelder/herdr/releases/download"
 
 MANIFEST_URL="${HERDR_MANIFEST_URL:-$DEFAULT_MANIFEST_URL}"
 BIN_DIR_REQUESTED="${HERDR_BIN_DIR:-$HOME/.local/bin}"
@@ -274,7 +274,7 @@ case "$TAG" in
     *[!A-Za-z0-9._-]*) die "the fork preview manifest contains an invalid release tag." ;;
 esac
 EXPECTED_URL=$EXPECTED_RELEASE_ROOT/$TAG/$ASSET_NAME
-[ "$URL" = "$EXPECTED_URL" ] || die "the fork preview asset URL does not resolve to jerryfane/herdr: $URL"
+[ "$URL" = "$EXPECTED_URL" ] || die "the fork preview asset URL does not resolve to wwelder/herdr: $URL"
 case "$SHA256" in
     *[!0-9A-Fa-f]*) die "the fork preview asset checksum is not hexadecimal." ;;
 esac

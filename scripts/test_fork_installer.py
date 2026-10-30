@@ -16,7 +16,7 @@ INSTALLER = REPO_ROOT / "install.sh"
 BUILD_ID = "2026-08-29-32b2b45b14c7"
 TAG = f"preview-{BUILD_ID}"
 MANIFEST_URL = "https://example.test/preview.json"
-RELEASE_ROOT = "https://github.com/jerryfane/herdr/releases/download"
+RELEASE_ROOT = "https://github.com/wwelder/herdr/releases/download"
 REQUIRED_COMMANDS = (
     "awk",
     "chmod",
@@ -205,7 +205,7 @@ fi
         # Exercise the default, not HERDR_MANIFEST_URL: an upstream sync once
         # replaced the committed preview manifest and broke real installs.
         fork_manifest = (
-            "https://raw.githubusercontent.com/jerryfane/herdr/master/"
+            "https://raw.githubusercontent.com/wwelder/herdr/master/"
             "distribution/preview.json"
         )
         result = self._run(HERDR_MANIFEST_URL="", FAKE_MANIFEST_URL=fork_manifest)
@@ -282,7 +282,7 @@ fi
         result = self._run()
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("does not resolve to jerryfane/herdr", result.stderr)
+        self.assertIn("does not resolve to wwelder/herdr", result.stderr)
         self.assertEqual(self._command_log(), f"curl:{MANIFEST_URL}\n")
         self.assertFalse(self._installed_binary().exists())
 

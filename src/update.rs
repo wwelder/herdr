@@ -40,7 +40,7 @@ pub(crate) mod verify;
 /// has exactly one manifest URL to keep pointed at itself; the pin test in this
 /// module fails if an upstream sync repoints it.
 pub(crate) const PREVIEW_UPDATE_MANIFEST_URL: &str =
-    "https://raw.githubusercontent.com/jerryfane/herdr/master/distribution/preview.json";
+    "https://raw.githubusercontent.com/wwelder/herdr/master/distribution/preview.json";
 /// Every downloadable asset MUST come from this fork's own releases.
 ///
 /// `install.sh:277` has enforced this since the fork existed. Upstream publishes
@@ -49,12 +49,12 @@ pub(crate) const PREVIEW_UPDATE_MANIFEST_URL: &str =
 /// `distribution/preview.json` with upstream's copy once (cee4fc2d), so a version
 /// or build-id comparison alone cannot tell a fork release from a foreign one.
 /// The asset origin can.
-const EXPECTED_RELEASE_ROOT: &str = "https://github.com/jerryfane/herdr/releases/download/";
+const EXPECTED_RELEASE_ROOT: &str = "https://github.com/wwelder/herdr/releases/download/";
 /// The one path that always lands a HerdrUp build (the installer the README
 /// documents). Every refusal to update names it, so a user who hits one knows
 /// what to run instead of reaching for upstream's installer.
 pub(crate) const FORK_INSTALL_COMMAND: &str =
-    "curl -fsSL https://herdrup.themartian.app/install.sh | sh";
+    "curl -fsSL https://raw.githubusercontent.com/wwelder/herdr/master/install.sh | sh";
 const HERDR_UPDATE_COMMAND: &str = "herdr update";
 const MISE_INSTALLS_DIR_ENV: &str = "MISE_INSTALLS_DIR";
 const FAKE_UPDATE_VERSION_ENV: &str = "HERDR_FAKE_UPDATE_VERSION";
@@ -304,7 +304,7 @@ pub(crate) fn ensure_fork_release_asset(url: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "refusing to install {url}: it is not published by jerryfane/herdr, and installing \
+        "refusing to install {url}: it is not published by wwelder/herdr, and installing \
          it would replace HerdrUp with a foreign build. Install HerdrUp with \
          `{FORK_INSTALL_COMMAND}`"
     ))
@@ -1727,7 +1727,7 @@ pub(crate) fn preview_channel_rejection_for_current_install() -> Option<&'static
 pub(crate) fn package_manager_channel_update_guidance_for_current_install() -> Option<&'static str>
 {
     if is_package_manager_managed_install() {
-        Some("A package-manager upgrade may install upstream Herdr, not this fork; install HerdrUp directly with `curl -fsSL https://herdrup.themartian.app/install.sh | sh`.")
+        Some("A package-manager upgrade may install upstream Herdr, not this fork; install HerdrUp directly with `curl -fsSL https://raw.githubusercontent.com/wwelder/herdr/master/install.sh | sh`.")
     } else {
         None
     }
@@ -1738,7 +1738,7 @@ fn preview_channel_rejection_for_exe_path(path: &Path) -> Option<&'static str> {
         || is_mise_managed_exe_path_following_links(path)
         || is_nix_store_exe_path_following_links(path)
     {
-        Some("Preview updates require a direct HerdrUp install; a package-manager upgrade may install upstream Herdr. Use `curl -fsSL https://herdrup.themartian.app/install.sh | sh` instead")
+        Some("Preview updates require a direct HerdrUp install; a package-manager upgrade may install upstream Herdr. Use `curl -fsSL https://raw.githubusercontent.com/wwelder/herdr/master/install.sh | sh` instead")
     } else {
         None
     }
@@ -2357,7 +2357,7 @@ mod tests {
                 crate::protocol::endpoint::ENDPOINT_PROTOCOL_GENERATION,
             ),
             download_url:
-                "https://github.com/jerryfane/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
+                "https://github.com/wwelder/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
                     .to_string(),
             sha256: "0".repeat(64),
             size: 1,
@@ -2956,7 +2956,7 @@ mod tests {
                 crate::protocol::endpoint::ENDPOINT_PROTOCOL_GENERATION,
             ),
             download_url:
-                "https://github.com/jerryfane/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
+                "https://github.com/wwelder/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
                     .to_string(),
             sha256: "0".repeat(64),
             size: 1,
@@ -3157,7 +3157,7 @@ mod tests {
                 crate::protocol::endpoint::ENDPOINT_PROTOCOL_GENERATION,
             ),
             download_url:
-                "https://github.com/jerryfane/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
+                "https://github.com/wwelder/herdr/releases/download/v9.9.9/herdr-linux-x86_64"
                     .to_string(),
             sha256: "0".repeat(64),
             size: 1,
@@ -3291,7 +3291,7 @@ mod tests {
     fn preview_manifest_release_carries_the_verified_platform_asset() {
         let (os, arch) = platform_target();
         let url = format!(
-            "https://github.com/jerryfane/herdr/releases/download/preview-2026-06-02-abcdef123456/herdr-{os}-{arch}"
+            "https://github.com/wwelder/herdr/releases/download/preview-2026-06-02-abcdef123456/herdr-{os}-{arch}"
         );
         let manifest: PreviewManifest = serde_json::from_str(&v2_manifest_json(&url)).unwrap();
 
@@ -3321,7 +3321,7 @@ mod tests {
             .expect_err("an upstream-hosted asset must not be installable over a fork build")
             .to_string();
         assert!(
-            error.contains("not published by jerryfane/herdr")
+            error.contains("not published by wwelder/herdr")
                 && error.contains(FORK_INSTALL_COMMAND),
             "unexpected error: {error}"
         );
@@ -3334,7 +3334,7 @@ mod tests {
         // must not quietly switch the updater to it or to herdr.dev/latest.json.
         assert_eq!(
             update_manifest_url(UpdateChannel::Preview).unwrap(),
-            "https://raw.githubusercontent.com/jerryfane/herdr/master/distribution/preview.json"
+            "https://raw.githubusercontent.com/wwelder/herdr/master/distribution/preview.json"
         );
         assert!(Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("distribution/preview.json")

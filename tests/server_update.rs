@@ -29,7 +29,7 @@ use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize}
 use sha2::Digest as _;
 use test_signing::TestSigner;
 
-const RELEASE_ROOT: &str = "https://github.com/jerryfane/herdr/releases/download/";
+const RELEASE_ROOT: &str = "https://github.com/wwelder/herdr/releases/download/";
 /// Far beyond any real commit time, so the test build is always older.
 const NEWER_COMMIT_TIME: i64 = 4_000_000_000;
 /// Long enough for a download, the switch and the 180 s observation window.

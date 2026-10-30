@@ -25,7 +25,7 @@ const MAX_SIGNATURE_BYTES: usize = 4 * 1024;
 const MAX_BUILD_ID_LEN: usize = 64;
 #[cfg(debug_assertions)]
 const DISTRIBUTION_ROOT: &str =
-    "https://raw.githubusercontent.com/jerryfane/herdr/master/distribution/";
+    "https://raw.githubusercontent.com/wwelder/herdr/master/distribution/";
 
 /// Debug builds only: a `http://127.0.0.1:<port>` origin that stands in for
 /// both `raw.githubusercontent.com/…/distribution/` and the release root.
@@ -666,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn release_keys_are_the_keyring_primary_then_the_offline_backup() {
+    fn release_key_is_the_fork_release_key() {
         use base64::Engine as _;
         let ids: Vec<String> = super::super::keys::RELEASE_PUBLIC_KEYS
             .iter()
@@ -685,7 +685,7 @@ mod tests {
                     .collect()
             })
             .collect();
-        assert_eq!(ids, ["1909BF13AB4A7686", "4EC2A8E66B478CBA"]);
+        assert_eq!(ids, ["1E067B988F27A0D0"]);
     }
 
     #[test]

@@ -855,6 +855,34 @@ mod tests {
     }
 
     #[test]
+    fn registering_an_activity_pushes_it_the_current_state() {
+        let _guard = crate::config::test_config_env_lock().lock().unwrap();
+        let config_home =
+            std::env::temp_dir().join(format!("herdr-la-register-{}", std::process::id()));
+        std::env::set_var("XDG_CONFIG_HOME", &config_home);
+        let (mut app, capture, _agent) = seeded(direct_push(), "la-register-agent");
+        capture.take();
+
+        app.handle_notifications_register_activity(
+            "r".to_string(),
+            crate::api::schema::NotificationsRegisterActivityParams {
+                activity_push_token: "ab".repeat(40),
+                relay_capability: None,
+            },
+        );
+        let pushed = capture.take().live_activities;
+
+        std::env::remove_var("XDG_CONFIG_HOME");
+        let _ = std::fs::remove_dir_all(config_home);
+        assert_eq!(
+            pushed.len(),
+            1,
+            "a new activity gets the state without waiting for a change"
+        );
+        assert_eq!(pushed[0]["headline"], "la-register-agent");
+    }
+
+    #[test]
     fn live_activity_counts_reachable_remote_agents() {
         // Unique names: the Live Activity dedup hash is process-wide.
         let (mut app, capture, agent) = seeded(direct_push(), "la-remote-agent");

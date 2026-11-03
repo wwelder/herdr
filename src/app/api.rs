@@ -2134,10 +2134,10 @@ impl App {
         };
         match crate::persist::activities::upsert(activity) {
             Ok(_) => {
-                // Reset the dedup hash so the next status change is delivered to the
-                // newly-registered activity even if the aggregate is unchanged since the
-                // last send.
-                LAST_LIVE_ACTIVITY_HASH.store(0, std::sync::atomic::Ordering::Relaxed);
+                // Push now: a new activity starts from the app's own state, which has no
+                // APM and only the sessions the app watches. Waiting for the next status
+                // change could leave it that way indefinitely on an idle machine.
+                self.emit_live_activity(true);
                 responses::encode_success(id, ResponseResult::Ok {})
             }
             Err(err) => {

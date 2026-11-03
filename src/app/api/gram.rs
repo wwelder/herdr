@@ -1151,6 +1151,8 @@ pub(crate) fn gram_push_notification(
         pane_id: String::new(),
         workspace_id: String::new(),
         kind: crate::push::PushKind::Gram,
+        agent: String::new(),
+        request: None,
         #[cfg(unix)]
         guest_scope: Some(crate::guest::push::GuestScope::Gram {
             from: item.from.clone(),

@@ -1140,13 +1140,22 @@ impl App {
             else {
                 continue;
             };
+            // A blocked agent's question reads better on the lock screen than where it is.
+            let request = (push_kind == crate::push::PushKind::NeedsInput)
+                .then(|| self.terminal_runtimes.get(&pane.attached_terminal_id))
+                .flatten()
+                .and_then(|runtime| {
+                    crate::detect::pending_request::pending_request(&runtime.visible_text())
+                });
             let body = sanitized_notification_text(
-                &crate::app::actions::notification_context(
-                    ws,
-                    &workspace_label,
-                    update.ws_idx,
-                    update.pane_id,
-                ),
+                &request.clone().unwrap_or_else(|| {
+                    crate::app::actions::notification_context(
+                        ws,
+                        &workspace_label,
+                        update.ws_idx,
+                        update.pane_id,
+                    )
+                }),
                 240,
             )
             .unwrap_or_default();
@@ -1156,6 +1165,8 @@ impl App {
                 pane_id: public_pane_id,
                 workspace_id: self.public_workspace_id(update.ws_idx),
                 kind: push_kind,
+                agent: agent_display.to_string(),
+                request,
                 #[cfg(unix)]
                 guest_scope: Some(crate::guest::push::GuestScope::Agent {
                     terminal_id: pane.attached_terminal_id.to_string(),
@@ -2433,6 +2444,12 @@ fn live_activity_content_state(agents: &[crate::api::schema::AgentInfo]) -> serd
         "workingCount": working_count,
         "totalCount": agents.len(),
         "workingSince": working_since,
+        // What the lead is asking, only while it needs you; the widgets show it and open
+        // its pane on tap.
+        "question": lead
+            .filter(|_| status == "needsYou")
+            .and_then(|agent| agent.pending_request.clone()),
+        "agentID": lead.map(|agent| agent.pane_id.clone()),
     })
 }
 
@@ -2514,6 +2531,27 @@ mod live_activity_content_state_tests {
         // Non-working lead → null regardless of any turn boundary.
         let cs = live_activity_content_state(&[agent("idle", Some("a"))]);
         assert!(cs["workingSince"].is_null());
+    }
+
+    #[test]
+    fn question_and_agent_id_come_from_the_lead() {
+        fn asking(status: &str, pane: &str) -> AgentInfo {
+            let mut agent = agent(status, Some(pane));
+            agent.pane_id = pane.to_string();
+            agent.pending_request = Some(format!("{pane}?"));
+            agent
+        }
+        let cs =
+            live_activity_content_state(&[asking("working", "w1-1"), asking("blocked", "w1-2")]);
+        assert_eq!(cs["question"], "w1-2?");
+        assert_eq!(cs["agentID"], "w1-2");
+        // Only a lead that needs you is asking anything.
+        let cs = live_activity_content_state(&[asking("working", "w1-1")]);
+        assert!(cs["question"].is_null());
+        assert_eq!(cs["agentID"], "w1-1");
+        let cs = live_activity_content_state(&[]);
+        assert!(cs["question"].is_null());
+        assert!(cs["agentID"].is_null());
     }
 }
 

@@ -66,9 +66,25 @@ fn payload_body_in(notification: &PushNotification, session: &str) -> String {
     });
     // A gram alert deep-links to the app's Gram page, not a pane. The `gram`
     // marker lets the client branch on tap; `pane_id`/`workspace_id` are empty
-    // for these and must be ignored when `gram` is present.
-    if notification.kind == PushKind::Gram {
-        payload["gram"] = serde_json::Value::Bool(true);
+    // for these and must be ignored when `gram` is present. An agent alert names
+    // its kind, agent and question top-level, and is mutable so the notification
+    // service extension can hand them to the home-screen widgets.
+    let kind = match notification.kind {
+        PushKind::Gram => None,
+        PushKind::NeedsInput => Some("needs_input"),
+        PushKind::Finished => Some("finished"),
+        PushKind::Died => Some("died"),
+    };
+    match kind {
+        None => payload["gram"] = serde_json::Value::Bool(true),
+        Some(kind) => {
+            payload["kind"] = serde_json::json!(kind);
+            payload["agent"] = serde_json::json!(notification.agent);
+            if let Some(request) = &notification.request {
+                payload["request"] = serde_json::json!(request);
+            }
+            payload["aps"]["mutable-content"] = serde_json::json!(1);
+        }
     }
     // An answerable question (herdr#309): the phone shows the options as
     // notification actions and answers with `agent.answer`.
@@ -356,6 +372,8 @@ mod tests {
             pane_id: "w1-1".to_string(),
             workspace_id: "w_1".to_string(),
             kind: PushKind::Finished,
+            agent: "claude".to_string(),
+            request: None,
             #[cfg(unix)]
             guest_scope: None,
             ask_source: None,
@@ -377,7 +395,37 @@ mod tests {
         // Nor, without a pending ask, any question.
         assert!(payload.get("herdr_ask").is_none());
         assert!(payload["aps"].get("category").is_none());
-        assert!(payload["aps"].get("mutable-content").is_none());
+        // It names its kind and agent for the notification service extension, and
+        // carries no request: the body is the workspace fallback, not a question.
+        assert_eq!(payload["aps"]["mutable-content"], 1);
+        assert_eq!(payload["kind"], "finished");
+        assert_eq!(payload["agent"], "claude");
+        assert!(payload.get("request").is_none());
+    }
+
+    #[test]
+    fn payload_body_carries_a_needs_input_request() {
+        let mut notification = sample_notification();
+        notification.kind = PushKind::NeedsInput;
+        notification.title = "claude needs attention".to_string();
+        notification.body = "Bash command git push Do you want to proceed?".to_string();
+        notification.request = Some("Bash command\ngit push\nDo you want to proceed?".to_string());
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload_body(&notification)).unwrap();
+        assert_eq!(payload["kind"], "needs_input");
+        assert_eq!(payload["agent"], "claude");
+        assert_eq!(
+            payload["request"],
+            "Bash command\ngit push\nDo you want to proceed?"
+        );
+        assert_eq!(payload["aps"]["alert"]["title"], "claude needs attention");
+        assert_eq!(payload["aps"]["mutable-content"], 1);
+
+        notification.kind = PushKind::Died;
+        notification.request = None;
+        let died: serde_json::Value = serde_json::from_str(&payload_body(&notification)).unwrap();
+        assert_eq!(died["kind"], "died");
+        assert!(died.get("request").is_none());
     }
 
     #[test]
@@ -400,6 +448,10 @@ mod tests {
         let payload: serde_json::Value =
             serde_json::from_str(&payload_body(&notification)).unwrap();
         assert_eq!(payload["gram"], serde_json::Value::Bool(true));
+        // A gram is not an agent alert: no kind, agent or extension hook.
+        assert!(payload.get("kind").is_none());
+        assert!(payload.get("agent").is_none());
+        assert!(payload["aps"].get("mutable-content").is_none());
     }
 
     #[test]

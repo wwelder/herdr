@@ -1162,6 +1162,13 @@ impl App {
         let account_unresolved = account.is_some() && resolved_account.is_none();
         let account_config_dir = resolved_account.map(|entry| entry.config_dir.clone());
         let avatar = self.agent_avatars.get(&pane.terminal_id).cloned();
+        let pending_request = (pane.agent_status == crate::api::schema::AgentStatus::Blocked
+            || pane.input_pending)
+            .then(|| self.terminal_runtimes.get(&pane_state.attached_terminal_id))
+            .flatten()
+            .and_then(|runtime| {
+                crate::detect::pending_request::pending_request(&runtime.visible_text())
+            });
         Some(crate::api::schema::AgentInfo {
             terminal_id: pane.terminal_id,
             name: terminal.agent_name.clone(),
@@ -1171,6 +1178,7 @@ impl App {
             terminal_title_stripped: pane.terminal_title_stripped,
             display_agent: pane.display_agent,
             agent_status: pane.agent_status,
+            pending_request,
             input_pending: pane.input_pending,
             input_prompt_kind: pane.input_prompt_kind,
             composer: pane.composer,
@@ -1442,6 +1450,7 @@ fn archived_agent_info(
     avatars: &crate::persist::agent_avatars::AgentAvatarStore,
 ) -> crate::api::schema::AgentInfo {
     crate::api::schema::AgentInfo {
+        pending_request: None,
         terminal_id: record.terminal_id.clone(),
         name: record.name.clone(),
         agent: Some(record.kind.clone()),

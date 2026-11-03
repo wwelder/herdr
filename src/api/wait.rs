@@ -1078,6 +1078,7 @@ mod tests {
         state_change_seq: u64,
     ) -> crate::api::schema::AgentInfo {
         crate::api::schema::AgentInfo {
+            pending_request: None,
             account: None,
             account_config_dir: None,
             account_unresolved: false,

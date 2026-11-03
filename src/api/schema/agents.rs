@@ -511,6 +511,10 @@ pub struct AgentInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_agent: Option<String>,
     pub agent_status: AgentStatus,
+    /// What a blocked agent is asking, read off its screen: the lines above a numbered
+    /// choice menu. Absent unless the agent is blocked or showing an input prompt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_request: Option<String>,
     #[serde(default, skip_serializing_if = "super::is_false")]
     pub input_pending: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -54,6 +54,12 @@ pub(crate) struct PushNotification {
     pub pane_id: String,
     pub workspace_id: String,
     pub kind: PushKind,
+    /// The agent the title names ("jarvis", "llm-opt on Jerry's Mac Studio"); empty for
+    /// a gram. Sent as `agent` so the notification service extension can label it.
+    pub agent: String,
+    /// What a NeedsInput alert's agent is asking, read off its screen. Sent as `request`,
+    /// and only when real: the body falls back to the workspace and tab otherwise.
+    pub request: Option<String>,
     /// The local agent or Gram this alert is about, so the guests granted
     /// that agent get it too. `None` for agents on other machines.
     #[cfg(unix)]

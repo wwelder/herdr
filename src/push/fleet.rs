@@ -305,9 +305,12 @@ mod tests {
         let busy = json!({"headline": "api", "status": "working", "needsYouCount": 0,
                           "workingCount": 2, "totalCount": 3, "workingSince": 5.0});
         let blocked = json!({"headline": "deploy", "status": "needsYou", "needsYouCount": 1,
-                             "workingCount": 1, "totalCount": 4, "workingSince": null});
+                             "workingCount": 1, "totalCount": 4, "workingSince": null,
+                             "question": "Do you want to proceed?", "agentID": "w2-1"});
         let merged = merge(&[quiet.clone(), busy.clone(), blocked]);
         assert_eq!(merged["headline"], "deploy");
+        assert_eq!(merged["question"], "Do you want to proceed?");
+        assert_eq!(merged["agentID"], "w2-1");
         assert_eq!(merged["needsYouCount"], 1);
         assert_eq!(merged["workingCount"], 3);
         assert_eq!(merged["totalCount"], 7);

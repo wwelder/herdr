@@ -147,6 +147,7 @@ fn harness(questions: Value) -> Harness {
         keys: Vec::new(),
     };
     let agent = AgentInfo {
+        pending_request: None,
         account: None,
         account_config_dir: None,
         account_unresolved: false,

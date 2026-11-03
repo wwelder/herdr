@@ -11824,6 +11824,13 @@
               "items": true,
               "type": "array"
             },
+            "pending_request": {
+              "description": "What a blocked agent is asking, read off its screen: the lines above a numbered\nchoice menu. Absent unless the agent is blocked or showing an input prompt.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "reachability": {
               "anyOf": [
                 {

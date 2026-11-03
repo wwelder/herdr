@@ -66,6 +66,8 @@ struct AlertContext {
     machine: String,
     body: String,
     workspace_id: String,
+    /// What the peer read off the agent's screen (`pending_request`).
+    request: Option<String>,
 }
 
 /// One reachable remote agent, as read from the store.
@@ -139,6 +141,11 @@ impl RemoteAgent {
                     .unwrap_or_else(|| alias.to_owned()),
                 body,
                 workspace_id: agent.workspace_id.clone(),
+                // A peer's text is unbounded; keep the alert under APNs' 4 KiB.
+                request: agent
+                    .pending_request
+                    .as_deref()
+                    .map(|request| request.chars().take(280).collect()),
             },
         }
     }
@@ -181,20 +188,27 @@ impl RemoteTransition {
     /// agent has held, or a title that sanitizes away, like the local path.
     fn notification(self) -> Option<PushNotification> {
         let title_agent = self.alert.title_agent?;
+        let agent = format!("{title_agent} on {}", self.alert.machine);
         let title = super::sanitized_notification_text(
-            &format!(
-                "{title_agent} on {} {}",
-                self.alert.machine,
-                super::push_event_text(self.kind)
-            ),
+            &format!("{agent} {}", super::push_event_text(self.kind)),
             80,
         )?;
+        let request = self
+            .alert
+            .request
+            .filter(|_| self.kind == PushKind::NeedsInput);
         Some(PushNotification {
             title,
-            body: super::sanitized_notification_text(&self.alert.body, 240).unwrap_or_default(),
+            body: super::sanitized_notification_text(
+                request.as_deref().unwrap_or(&self.alert.body),
+                240,
+            )
+            .unwrap_or_default(),
             pane_id: self.pane_id,
             workspace_id: self.alert.workspace_id,
             kind: self.kind,
+            agent,
+            request,
             #[cfg(unix)]
             guest_scope: None,
             // v1: only the daemon that runs an agent sends its question
@@ -573,6 +587,8 @@ mod tests {
         assert_eq!(alert.kind, PushKind::NeedsInput);
         assert_eq!(alert.title, "llm-opt on Jerry's Mac Studio needs attention");
         assert_eq!(alert.body, "api · 1");
+        assert_eq!(alert.agent, "llm-opt on Jerry's Mac Studio");
+        assert_eq!(alert.request, None);
         assert_eq!(alert.pane_id, PANE);
         assert_eq!(alert.workspace_id, "mac/w1");
         assert!(sync(&mut app, &capture).is_empty());
@@ -640,6 +656,7 @@ mod tests {
         let (mut app, capture, agent) = seeded(direct_push(), "llm-opt");
         let mut blocked = agent;
         blocked.agent_status = AgentStatus::Blocked;
+        blocked.pending_request = Some("Bash command\ngit push".to_string());
 
         poll(&app, vec![blocked.clone()]);
         let alerts = sync(&mut app, &capture);
@@ -648,6 +665,9 @@ mod tests {
             alerts[0].title,
             "llm-opt on Jerry's Mac Studio needs attention"
         );
+        // The peer's reading of the question rides the alert, and is its body.
+        assert_eq!(alerts[0].request.as_deref(), Some("Bash command\ngit push"));
+        assert_eq!(alerts[0].body, "Bash command git push");
 
         poll(&app, vec![blocked]);
         assert!(sync(&mut app, &capture).is_empty());

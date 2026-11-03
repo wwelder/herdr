@@ -170,6 +170,8 @@ mod tests {
             pane_id: "w1-2".into(),
             workspace_id: "w_1".into(),
             kind,
+            agent: "jarvis".into(),
+            request: None,
             #[cfg(unix)]
             guest_scope: None,
             ask_source: source.map(|session| AskSource {

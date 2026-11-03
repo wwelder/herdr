@@ -5,6 +5,7 @@
 
 pub mod manifest;
 pub mod manifest_update;
+pub(crate) mod pending_request;
 
 /// Best-effort classification of a live agent-owned input prompt.
 #[derive(

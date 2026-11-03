@@ -885,6 +885,16 @@ impl App {
         app.state.terminals = terminals;
         app.state.archived_agents = snapshot.archived_agents.clone();
         app.terminal_runtimes = runtimes.into();
+        // The PTY parsers come back seeded with each pane's title, but pane state does not,
+        // and an idle agent never re-sends an unchanged title: copy them across once.
+        let panes = app
+            .state
+            .workspaces
+            .iter()
+            .flat_map(|ws| &ws.tabs)
+            .flat_map(|tab| tab.panes.keys().copied())
+            .collect();
+        app.sync_terminal_titles(&panes);
         app.state.active = snapshot
             .active
             .filter(|&idx| idx < app.state.workspaces.len());

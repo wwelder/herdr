@@ -280,6 +280,17 @@ fn request(socket_path: &Path, request: serde_json::Value) -> serde_json::Value 
     try_request(socket_path, request).unwrap_or_else(|err| panic!("{}", err.message))
 }
 
+fn pane_terminal_title(socket_path: &Path, pane_id: &str) -> String {
+    let response = request(
+        socket_path,
+        serde_json::json!({"id":"test:pane:get","method":"pane.get","params":{"pane_id": pane_id}}),
+    );
+    response["result"]["pane"]["terminal_title"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
 fn assert_ok(response: serde_json::Value) {
     assert!(
         response.get("result").is_some(),
@@ -1041,7 +1052,7 @@ fn live_handoff_preserves_pane_process_io() {
         received_marker.display()
     );
     let second_command = format!(
-        "sh -c 'echo SECOND_READY $$ > {}; trap \"echo HUP >> {}\" HUP; while read line; do echo second:$line; echo second:$line >> {}; done'",
+        "sh -c 'printf \"\\033]0;handoff-title\\007\"; echo SECOND_READY $$ > {}; trap \"echo HUP >> {}\" HUP; while read line; do echo second:$line; echo second:$line >> {}; done'",
         second_marker.display(),
         second_hup_marker.display(),
         second_received_marker.display()
@@ -1092,6 +1103,10 @@ fn live_handoff_preserves_pane_process_io() {
         }),
     ));
     wait_for_output(&api_socket, &pane_id, "got:before_replay");
+    assert_eq!(
+        pane_terminal_title(&api_socket, &second_pane_id),
+        "handoff-title"
+    );
 
     assert_ok(request(
         &api_socket,
@@ -1121,6 +1136,11 @@ fn live_handoff_preserves_pane_process_io() {
         "second pane process received HUP during handoff"
     );
     wait_for_output(&api_socket, &pane_id, "got:before_replay");
+    // An idle agent never re-sends its title, so the restored one must already be reported.
+    assert_eq!(
+        pane_terminal_title(&api_socket, &second_pane_id),
+        "handoff-title"
+    );
 
     assert_ok(request(
         &api_socket,

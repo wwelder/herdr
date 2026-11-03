@@ -260,6 +260,9 @@ pub enum AppEvent {
         account_id: String,
         usage: Option<(crate::api::schema::AccountUsage, bool)>,
     },
+    /// The host's APM changed, or this server just started: push the machine's Live
+    /// Activity again (see `push::fleet`).
+    LiveActivityTick,
     /// A plugin action or event command finished.
     PluginCommandFinished {
         log_id: String,

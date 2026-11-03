@@ -58,6 +58,10 @@ impl App {
                 segment_index,
                 result,
             } => self.handle_tab_bar_command_finished(generation, segment_index, result),
+            AppEvent::LiveActivityTick => {
+                self.emit_live_activity(true);
+                false
+            }
             AppEvent::UsageRefreshed { account_id, usage } => {
                 self.handle_usage_refreshed(account_id, usage);
                 // Live usage is surfaced only through the `accounts.list` API,
@@ -1172,31 +1176,42 @@ impl App {
     /// and after remote federation agents change (`sync_remote_agent_notifications`).
     /// Best-effort + detached; a no-op when push is off or no Live Activity is registered.
     fn emit_live_activity_updates(&self) {
+        self.emit_live_activity(false);
+    }
+
+    /// `tick` pushes even when this session's own aggregate is unchanged: the host APM
+    /// moved, or this server just started and must join the machine-wide merge.
+    fn emit_live_activity(&self, tick: bool) {
         use std::sync::atomic::Ordering;
 
         if self.no_session || !crate::push::may_deliver(&self.state.push_config) {
             return;
         }
 
-        // The aggregate is computed from in-memory state (no disk on the hot loop). The
-        // activity-store read + the send happen off-loop in the spawned thread below; the
-        // dedup + monotonic-timestamp bookkeeping here is all lock-free on this one thread.
+        // This session's aggregate is computed from in-memory state. The activity-store
+        // read + the send happen off-loop in the spawned thread below; the dedup +
+        // monotonic-timestamp bookkeeping here is all lock-free on this one thread.
         let mut agents = self.collect_agent_infos();
         agents.extend(self.reachable_remote_agents());
         let content_state = live_activity_content_state(&agents);
 
-        // Dedup: skip when the aggregate is unchanged since the last dispatch. Status-change
-        // events fire often without altering the widget's content (e.g. a git refresh), and
-        // Live Activity push budgets are small, so unchanged states must not hit APNs.
+        // Dedup: skip when this session's aggregate is unchanged since the last dispatch.
+        // Status-change events fire often without altering the widget's content (e.g. a git
+        // refresh), and Live Activity push budgets are small, so unchanged states must not
+        // hit APNs. Other sessions' changes are pushed by their own servers.
         let hash = {
             use std::hash::{Hash, Hasher};
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             content_state.to_string().hash(&mut hasher);
             hasher.finish()
         };
-        if LAST_LIVE_ACTIVITY_HASH.load(Ordering::Relaxed) == hash {
+        if !tick && LAST_LIVE_ACTIVITY_HASH.load(Ordering::Relaxed) == hash {
             return;
         }
+        // Every session's server pushes to the same activities, so push the whole machine.
+        // ponytail: a few small file reads on the loop, only when this session changed.
+        #[cfg(not(test))]
+        let content_state = crate::push::fleet::merge_with_peers(&content_state);
 
         // Monotonic, source-ordered timestamp (seconds), assigned HERE on the single app loop
         // rather than per-thread, so reordered sender threads can't let a stale snapshot

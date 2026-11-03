@@ -15,6 +15,7 @@
 
 mod apns;
 mod ask;
+pub(crate) mod fleet;
 mod jwt;
 mod relay;
 

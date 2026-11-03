@@ -1749,6 +1749,7 @@ impl AppState {
             AppEvent::WorktreeReadFinished(_) => Vec::new(),
             AppEvent::TabBarCommandFinished { .. } => Vec::new(),
             AppEvent::UsageRefreshed { .. } => Vec::new(),
+            AppEvent::LiveActivityTick => Vec::new(),
             AppEvent::PluginCommandFinished { .. } => Vec::new(),
             // The server-owned App wrapper intercepts transfer worker results
             // before delegating ordinary state events to this pure state layer.

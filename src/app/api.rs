@@ -1204,7 +1204,12 @@ impl App {
         // monotonic-timestamp bookkeeping here is all lock-free on this one thread.
         let mut agents = self.collect_agent_infos();
         agents.extend(self.reachable_remote_agents());
-        let content_state = live_activity_content_state(&agents);
+        let mut content_state = live_activity_content_state(&agents);
+        // The session `agentID` lives in: after the merge below, a tap must open the lead's
+        // own session, not whichever one the phone is on.
+        content_state["session"] = serde_json::json!(crate::session::active_name()
+            .as_deref()
+            .unwrap_or(crate::session::DEFAULT_SESSION_NAME));
 
         // Dedup: skip when this session's aggregate is unchanged since the last dispatch.
         // Status-change events fire often without altering the widget's content (e.g. a git

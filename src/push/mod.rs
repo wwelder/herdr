@@ -192,9 +192,12 @@ fn device_muted(device: &RegisteredDevice, pane_id: &str) -> bool {
     !pane_id.is_empty() && device.muted_panes.iter().any(|muted| muted == pane_id)
 }
 
-/// The device opted into this kind and has not muted its pane.
+/// The device opted into this kind, or the alert is critical (an agent's
+/// emergency reaches the owner even with routine gram alerts off), and has not
+/// muted its pane.
 pub(crate) fn device_accepts(device: &RegisteredDevice, notification: &PushNotification) -> bool {
-    device_wants(device, notification.kind) && !device_muted(device, &notification.pane_id)
+    (notification.critical || device_wants(device, notification.kind))
+        && !device_muted(device, &notification.pane_id)
 }
 
 fn unix_secs_now() -> u64 {
@@ -909,6 +912,37 @@ mod tests {
         assert!(!device_wants(&d, PushKind::Gram));
         d.notify_gram = true;
         assert!(device_wants(&d, PushKind::Gram));
+    }
+
+    #[test]
+    fn a_critical_gram_reaches_a_device_with_gram_alerts_off() {
+        let device = device(true, true, true);
+        assert!(!device.notify_gram);
+        let gram = |critical: bool| PushNotification {
+            title: "jarvis".to_string(),
+            body: "the build is on fire".to_string(),
+            pane_id: String::new(),
+            workspace_id: String::new(),
+            kind: PushKind::Gram,
+            agent: String::new(),
+            request: None,
+            critical,
+            #[cfg(unix)]
+            guest_scope: None,
+            ask_source: None,
+            ask: None,
+        };
+        assert!(!device_accepts(&device, &gram(false)));
+        assert!(device_accepts(&device, &gram(true)));
+
+        // A pane the owner muted stays muted, critical or not.
+        let mut muted = device.clone();
+        muted.muted_panes = vec!["w1:p1".to_string()];
+        let alert = PushNotification {
+            pane_id: "w1:p1".to_string(),
+            ..gram(true)
+        };
+        assert!(!device_accepts(&muted, &alert));
     }
 
     #[test]

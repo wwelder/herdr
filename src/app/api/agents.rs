@@ -1138,7 +1138,7 @@ fn resolve_config_home(
 
 /// Find `<config_home>/projects/<slug>/<id>.jsonl`, returning `(file, slug)`. Globs by session id so it
 /// does not depend on reproducing claude's exact cwd→slug rule.
-fn find_claude_session_file(
+pub(super) fn find_claude_session_file(
     config_home: &std::path::Path,
     id: &str,
 ) -> Option<(std::path::PathBuf, String)> {

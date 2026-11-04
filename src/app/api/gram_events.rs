@@ -195,6 +195,30 @@ impl App {
                 (session_ref.kind == crate::agent_resume::AgentSessionRefKind::Path)
                     .then(|| PathBuf::from(&session_ref.value))
             })
+            .or_else(|| {
+                // Claude reports its transcript path only at SessionStart, which a server
+                // that took over by live handoff or restart never saw: find it by id.
+                // ponytail: Claude only; codex's dated rollout tree is not searched.
+                (agent == "claude"
+                    && session_ref.kind == crate::agent_resume::AgentSessionRefKind::Id)
+                    .then(|| self.find_claude_transcript(&session_ref.value))
+                    .flatten()
+            })
+    }
+
+    /// `<config home>/projects/*/<id>.jsonl` under the default Claude config home or
+    /// any configured Claude account's.
+    fn find_claude_transcript(&self, id: &str) -> Option<PathBuf> {
+        crate::config::default_config_dir("claude")
+            .into_iter()
+            .chain(
+                self.loaded_accounts
+                    .iter()
+                    .filter(|account| account.kind == "claude")
+                    .map(|account| PathBuf::from(&account.config_dir)),
+            )
+            .find_map(|home| super::agents::find_claude_session_file(&home, id))
+            .map(|(file, _)| file)
     }
 }
 

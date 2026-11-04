@@ -97,6 +97,15 @@ fn payload_body_in(notification: &PushNotification, session: &str) -> String {
         payload["aps"]["mutable-content"] = serde_json::json!(1);
         payload["herdr_ask"] = serde_json::json!(ask);
     }
+    // iOS plays it at full volume through silent mode and Focus once the owner allows
+    // HerdrUp critical alerts. Mutable so HerdrUp's notification service extension can
+    // fall back to time-sensitive while they are not allowed.
+    if notification.critical {
+        payload["aps"]["sound"] =
+            serde_json::json!({"critical": 1, "name": "default", "volume": 1.0});
+        payload["aps"]["interruption-level"] = serde_json::json!("critical");
+        payload["aps"]["mutable-content"] = serde_json::json!(1);
+    }
     payload.to_string()
 }
 
@@ -374,6 +383,7 @@ mod tests {
             kind: PushKind::Finished,
             agent: "claude".to_string(),
             request: None,
+            critical: false,
             #[cfg(unix)]
             guest_scope: None,
             ask_source: None,
@@ -401,6 +411,23 @@ mod tests {
         assert_eq!(payload["kind"], "finished");
         assert_eq!(payload["agent"], "claude");
         assert!(payload.get("request").is_none());
+    }
+
+    #[test]
+    fn a_critical_alert_sounds_through_silent_mode() {
+        let mut notification = sample_notification();
+        let normal: serde_json::Value = serde_json::from_str(&payload_body(&notification)).unwrap();
+        assert_eq!(normal["aps"]["sound"], "default");
+        assert!(normal["aps"].get("interruption-level").is_none());
+
+        notification.critical = true;
+        let critical: serde_json::Value =
+            serde_json::from_str(&payload_body(&notification)).unwrap();
+        assert_eq!(critical["aps"]["interruption-level"], "critical");
+        assert_eq!(critical["aps"]["sound"]["critical"], 1);
+        assert_eq!(critical["aps"]["sound"]["name"], "default");
+        assert_eq!(critical["aps"]["sound"]["volume"], 1.0);
+        assert_eq!(critical["aps"]["mutable-content"], 1);
     }
 
     #[test]

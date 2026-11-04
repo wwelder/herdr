@@ -209,6 +209,7 @@ impl RemoteTransition {
             kind: self.kind,
             agent,
             request,
+            critical: false,
             #[cfg(unix)]
             guest_scope: None,
             // v1: only the daemon that runs an agent sends its question

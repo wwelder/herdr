@@ -1167,6 +1167,7 @@ impl App {
                 kind: push_kind,
                 agent: agent_display.to_string(),
                 request,
+                critical: false,
                 #[cfg(unix)]
                 guest_scope: Some(crate::guest::push::GuestScope::Agent {
                     terminal_id: pane.attached_terminal_id.to_string(),

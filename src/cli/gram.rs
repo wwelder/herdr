@@ -65,7 +65,7 @@ fn env_pane_id() -> Option<String> {
 }
 
 fn gram_send(args: &[String]) -> std::io::Result<i32> {
-    let (text, from, file_path) = match parse_send_args(args) {
+    let (text, from, file_path, critical) = match parse_send_args(args) {
         Ok(parsed) => parsed,
         Err(message) => {
             eprintln!("{message}");
@@ -89,6 +89,7 @@ fn gram_send(args: &[String]) -> std::io::Result<i32> {
             caller_pane_id: env_pane_id(),
             from,
             file,
+            critical,
         }),
     })?;
     // Redact the echoed body too, for symmetry with grab/list (the sender already
@@ -621,15 +622,23 @@ fn gram_delete(args: &[String]) -> std::io::Result<i32> {
 
 // MARK: - arg parsing (pure, unit-tested)
 
-/// `send [<text>] [--from LABEL] [--file PATH]` -> (text, from, file). At least one
-/// of text or a file is required; a file with no caption sends empty text.
-fn parse_send_args(args: &[String]) -> Result<(String, Option<String>, Option<String>), String> {
+/// `send [<text>] [--from LABEL] [--file PATH] [--critical]` -> (text, from, file,
+/// critical). At least one of text or a file is required; a file with no caption sends
+/// empty text.
+type SendArgs = (String, Option<String>, Option<String>, bool);
+
+fn parse_send_args(args: &[String]) -> Result<SendArgs, String> {
     let mut text: Option<String> = None;
     let mut from: Option<String> = None;
     let mut file: Option<String> = None;
+    let mut critical = false;
     let mut index = 0;
     while index < args.len() {
         match args[index].as_str() {
+            "--critical" => {
+                critical = true;
+                index += 1;
+            }
             "--from" => {
                 let Some(value) = args.get(index + 1) else {
                     return Err("missing value for --from".into());
@@ -655,9 +664,11 @@ fn parse_send_args(args: &[String]) -> Result<(String, Option<String>, Option<St
         }
     }
     if text.is_none() && file.is_none() {
-        return Err("usage: herdr gram send <text> [--from LABEL] [--file PATH]".into());
+        return Err(
+            "usage: herdr gram send <text> [--from LABEL] [--file PATH] [--critical]".into(),
+        );
     }
-    Ok((text.unwrap_or_default(), from, file))
+    Ok((text.unwrap_or_default(), from, file, critical))
 }
 
 /// `get-file <id> -o PATH` (or `--out PATH`) -> (id, path).
@@ -1061,7 +1072,7 @@ fn is_flag(value: &str) -> bool {
 fn print_gram_help() {
     eprintln!("herdr gram commands:");
     eprintln!(
-        "  herdr gram send <text> [--from LABEL] [--file PATH]   message the owner (push-notified)"
+        "  herdr gram send <text> [--from LABEL] [--file PATH] [--critical]   message the owner (push-notified; --critical wakes them, emergencies only)"
     );
     eprintln!("  herdr gram list [--queue] [--unread] [--owner] [--reveal] [--limit N]   list messages (--owner: read as the owner; --limit: newest N only)");
     eprintln!("  herdr gram grab <id> [--as LABEL]        claim a shared queue item");
@@ -1110,22 +1121,38 @@ mod tests {
             (
                 "digest ready".to_string(),
                 Some("trend-scout".to_string()),
-                None
+                None,
+                false
             )
         );
         assert_eq!(
             parse_send_args(&args(&["hello"])).unwrap(),
-            ("hello".to_string(), None, None)
+            ("hello".to_string(), None, None, false)
+        );
+        // An emergency wakes the owner.
+        assert_eq!(
+            parse_send_args(&args(&["prod is down", "--critical"])).unwrap(),
+            ("prod is down".to_string(), None, None, true)
         );
         // A file with a caption.
         assert_eq!(
             parse_send_args(&args(&["look", "--file", "/tmp/shot.png"])).unwrap(),
-            ("look".to_string(), None, Some("/tmp/shot.png".to_string()))
+            (
+                "look".to_string(),
+                None,
+                Some("/tmp/shot.png".to_string()),
+                false
+            )
         );
         // A file with no caption sends empty text.
         assert_eq!(
             parse_send_args(&args(&["--file", "/tmp/shot.png"])).unwrap(),
-            (String::new(), None, Some("/tmp/shot.png".to_string()))
+            (
+                String::new(),
+                None,
+                Some("/tmp/shot.png".to_string()),
+                false
+            )
         );
     }
 

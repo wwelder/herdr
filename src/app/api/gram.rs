@@ -239,7 +239,7 @@ impl App {
                 };
                 match crate::persist::gram::append(item.clone()) {
                     Ok(_) => {
-                        self.emit_apns_gram_message(&item);
+                        self.emit_apns_gram_message(&item, false);
                         encode_success(
                             id,
                             ResponseResult::GramSent {
@@ -383,7 +383,7 @@ impl App {
 
         match crate::persist::gram::append(item.clone()) {
             Ok(_) => {
-                self.emit_apns_gram_message(&item);
+                self.emit_apns_gram_message(&item, params.critical);
                 encode_success(
                     id,
                     ResponseResult::GramSent {
@@ -1056,7 +1056,7 @@ impl App {
     /// A sibling of `emit_apns_agent_notifications`: detached, best-effort, guarded
     /// by `crate::push::may_deliver`. The alert deep-links to the app's Gram page, so
     /// it carries no pane/workspace id (the payload's `gram` marker signals this).
-    fn emit_apns_gram_message(&self, item: &GramItem) {
+    fn emit_apns_gram_message(&self, item: &GramItem, critical: bool) {
         if self.no_session || !crate::push::may_deliver(&self.state.push_config) {
             return;
         }
@@ -1066,6 +1066,7 @@ impl App {
             vec![gram_push_notification(
                 item,
                 sender_machine_label(item, &labels),
+                critical,
             )],
         );
     }
@@ -1121,6 +1122,7 @@ fn sender_machine_label<'a>(item: &GramItem, labels: &'a MachineLabels) -> Optio
 pub(crate) fn gram_push_notification(
     item: &GramItem,
     machine_label: Option<&str>,
+    critical: bool,
 ) -> crate::push::PushNotification {
     let sender = match machine_label {
         Some(label) => {
@@ -1153,8 +1155,10 @@ pub(crate) fn gram_push_notification(
         kind: crate::push::PushKind::Gram,
         agent: String::new(),
         request: None,
+        critical,
+        // A critical gram is the owner's alarm: guests get no copy of it at all.
         #[cfg(unix)]
-        guest_scope: Some(crate::guest::push::GuestScope::Gram {
+        guest_scope: (!critical).then(|| crate::guest::push::GuestScope::Gram {
             from: item.from.clone(),
             sender: item.sender.clone(),
             gram_id: item.id.clone(),
@@ -1497,6 +1501,27 @@ mod tests {
     }
 
     #[test]
+    fn a_critical_gram_is_the_owners_alarm_alone() {
+        let mut item = owner_shared("alarm");
+        item.direction = StoredDirection::AgentToOwner;
+        item.from = "jarvis".to_string();
+        let normal = gram_push_notification(&item, None, false);
+        assert!(!normal.critical);
+        #[cfg(unix)]
+        assert!(
+            normal.guest_scope.is_some(),
+            "guests granted the agent get its grams"
+        );
+        let critical = gram_push_notification(&item, None, true);
+        assert!(critical.critical);
+        #[cfg(unix)]
+        assert!(
+            critical.guest_scope.is_none(),
+            "a guest never gets the owner's alarm"
+        );
+    }
+
+    #[test]
     fn agent_view_shows_queue_direct_grabs_and_own_sends() {
         let mut direct = owner_shared("direct");
         direct.to = Some("alpha".to_string());
@@ -1757,6 +1782,7 @@ mod tests {
                     caller_pane_id: None,
                     from: Some("tester".to_string()),
                     file: None,
+                    critical: false,
                 },
             );
             serde_json::from_str(&raw).unwrap()
@@ -2003,6 +2029,7 @@ mod tests {
                 caller_pane_id: None,
                 from: Some("tester".to_string()),
                 file: None,
+                critical: false,
             },
         );
 
@@ -2036,6 +2063,7 @@ mod tests {
                 caller_pane_id: None,
                 from: Some("tester".to_string()),
                 file: None,
+                critical: false,
             },
         );
         let after = list(&mut app, Some(&digest));

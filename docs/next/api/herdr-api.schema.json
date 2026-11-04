@@ -3345,6 +3345,10 @@
                 "null"
               ]
             },
+            "critical": {
+              "description": "Wake the owner: push this message as an iOS critical alert, which sounds through\nsilent mode and Focus. For emergencies only; guests never get it as critical.",
+              "type": "boolean"
+            },
             "file": {
               "anyOf": [
                 {

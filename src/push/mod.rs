@@ -60,6 +60,9 @@ pub(crate) struct PushNotification {
     /// What a NeedsInput alert's agent is asking, read off its screen. Sent as `request`,
     /// and only when real: the body falls back to the workspace and tab otherwise.
     pub request: Option<String>,
+    /// An agent's emergency (`herdr gram send --critical`): delivered as an iOS critical
+    /// alert, which sounds through silent mode and Focus. Owner devices only.
+    pub critical: bool,
     /// The local agent or Gram this alert is about, so the guests granted
     /// that agent get it too. `None` for agents on other machines.
     #[cfg(unix)]

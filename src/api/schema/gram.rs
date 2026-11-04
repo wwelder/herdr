@@ -31,6 +31,10 @@ pub struct GramSendParams {
     /// `gram.upload_chunk` under `file.upload_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<GramFileUpload>,
+    /// Wake the owner: push this message as an iOS critical alert, which sounds through
+    /// silent mode and Focus. For emergencies only; guests never get it as critical.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub critical: bool,
 }
 
 /// A staged file to attach to a `gram.send`/`gram.post`. Its bytes must already be

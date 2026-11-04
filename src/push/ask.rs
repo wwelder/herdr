@@ -172,6 +172,7 @@ mod tests {
             kind,
             agent: "jarvis".into(),
             request: None,
+            critical: false,
             #[cfg(unix)]
             guest_scope: None,
             ask_source: source.map(|session| AskSource {

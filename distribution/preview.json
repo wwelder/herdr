@@ -2,75 +2,75 @@
   "schema_version": 2,
   "channel": "preview",
   "base_version": "0.9.5",
-  "build_id": "2026-11-03-cd29fe98715e",
-  "commit": "cd29fe98715e0afecf674f05994d52df2d8ba843",
-  "commit_time": 1793737809,
-  "built_at": "2026-11-03T20:44:37Z",
+  "build_id": "2026-11-04-ede644794178",
+  "commit": "ede64479417864532685fb2ec80d790413cd6e57",
+  "commit_time": 1793824077,
+  "built_at": "2026-11-04T20:40:49Z",
   "protocol": 22,
   "endpoint_generation": 1,
-  "notes": "Herdr fork preview (wwelder/herdr): a blocked agent's question reaches the phone\n\nSource: cd29fe98715e0afecf674f05994d52df2d8ba843.\n\n- `agent.list` gains `pending_request`: what a blocked agent is asking, read off its screen (the lines above a numbered choice menu: Claude Code permission prompts and questions, Codex approvals, omp menus).\n- A \"needs attention\" push now shows that question as its body. Agent alerts carry `kind`, `agent` and `request` top-level and are `mutable-content`, so HerdrUp's notification service extension can update its home-screen widgets.\n- The Live Activity carries the lead's `question`, `agentID` and `session`, so the lock screen shows the question and a tap opens the right session's pane.\n\nThe Linux and Windows assets were built by the manual Build artifacts workflow. GitHub's macOS arm64 runners had no capacity, so both macOS assets were built on an Apple Silicon Mac from a clean checkout of the same commit with the workflow's settings (Rust 1.96.1, Zig 0.16.0, libghostty ReleaseSafe, SIMD off).\n\nUpdate with `herdr update` on the preview channel.",
+  "notes": "Herdr fork preview (wwelder/herdr): an agent can wake the owner\n\nSource: ede64479417864532685fb2ec80d790413cd6e57.\n\n- `herdr gram send --critical \"<text>\"` (API: `gram.send` with `critical: true`) pushes the gram to the owner's devices as an iOS critical alert, which plays through silent mode and Focus. It is for emergencies only. Guests never get a critical gram, not even as an ordinary alert.\n- HerdrUp shows it as time-sensitive until Apple grants its critical-alerts entitlement and the owner allows critical alerts.\n\nThe Linux and Windows assets were built by the manual Build artifacts workflow. GitHub's macOS arm64 runners had no capacity, so both macOS assets were built on an Apple Silicon Mac from a clean checkout of the same commit with the workflow's settings (Rust 1.96.1, Zig 0.16.0, libghostty ReleaseSafe, SIMD off).\n\nUpdate with `herdr update` on the preview channel.",
   "assets": {
     "linux-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-linux-x86_64",
-      "sha256": "a0f8bfc502a866f863bd5e19fc1f48c3c7c999c58c64fa03f2284609e442b414",
-      "size": 43767064
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-linux-x86_64",
+      "sha256": "8e7ff8668ffed80dfca5e2763b93dda16604fe08594c77d911328359e2384ad9",
+      "size": 43755616
     },
     "linux-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-linux-aarch64",
-      "sha256": "eb3cb9024a0caca53b0e4e1b00148f39e7b80dc3cf98c8d2637ce1b1096fda3f",
-      "size": 40313480
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-linux-aarch64",
+      "sha256": "9870feebf031527af732e69f7640fc40d90efb4b87837890e43453f61c399083",
+      "size": 40387128
     },
     "macos-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-macos-x86_64",
-      "sha256": "20b7716ce1f87ba3d0ba4a2ac2617dceb53bb0c7fbea009654de64b485c0efe1",
-      "size": 36961216
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-macos-x86_64",
+      "sha256": "a92e57a859ebc51c587946ab4c4ced2dcb7328f687b06cd85a052ec116777376",
+      "size": 36921272
     },
     "macos-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-macos-aarch64",
-      "sha256": "2519479d38fd02a6861a2cb095adddb2d990eb8248870d5b57ffbdcf6e426f6c",
-      "size": 33980176
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-macos-aarch64",
+      "sha256": "e48915074d8d462e48c5a7169d083bae729edca4c487f1a0bec3391d4cc45a65",
+      "size": 33976240
     },
     "windows-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-windows-x86_64.zip",
-      "sha256": "e4c8bf2724407c33e223c9381217b9f64483889bec3806ec0a2026680ecb0b15",
-      "size": 13473201,
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-windows-x86_64.zip",
+      "sha256": "1b9fd3e317d11d89f0004a74d01c1d057d641a6c2909edcec7ba07a28985b376",
+      "size": 13488020,
       "format": "zip"
     }
   },
   "builds": {
-    "2026-11-03-cd29fe98715e": {
+    "2026-11-04-ede644794178": {
       "base_version": "0.9.5",
-      "commit": "cd29fe98715e0afecf674f05994d52df2d8ba843",
-      "commit_time": 1793737809,
-      "built_at": "2026-11-03T20:44:37Z",
+      "commit": "ede64479417864532685fb2ec80d790413cd6e57",
+      "commit_time": 1793824077,
+      "built_at": "2026-11-04T20:40:49Z",
       "protocol": 22,
       "endpoint_generation": 1,
-      "tag": "preview-2026-11-03-cd29fe98715e",
+      "tag": "preview-2026-11-04-ede644794178",
       "assets": {
         "linux-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-linux-x86_64",
-          "sha256": "a0f8bfc502a866f863bd5e19fc1f48c3c7c999c58c64fa03f2284609e442b414",
-          "size": 43767064
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-linux-x86_64",
+          "sha256": "8e7ff8668ffed80dfca5e2763b93dda16604fe08594c77d911328359e2384ad9",
+          "size": 43755616
         },
         "linux-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-linux-aarch64",
-          "sha256": "eb3cb9024a0caca53b0e4e1b00148f39e7b80dc3cf98c8d2637ce1b1096fda3f",
-          "size": 40313480
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-linux-aarch64",
+          "sha256": "9870feebf031527af732e69f7640fc40d90efb4b87837890e43453f61c399083",
+          "size": 40387128
         },
         "macos-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-macos-x86_64",
-          "sha256": "20b7716ce1f87ba3d0ba4a2ac2617dceb53bb0c7fbea009654de64b485c0efe1",
-          "size": 36961216
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-macos-x86_64",
+          "sha256": "a92e57a859ebc51c587946ab4c4ced2dcb7328f687b06cd85a052ec116777376",
+          "size": 36921272
         },
         "macos-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-macos-aarch64",
-          "sha256": "2519479d38fd02a6861a2cb095adddb2d990eb8248870d5b57ffbdcf6e426f6c",
-          "size": 33980176
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-macos-aarch64",
+          "sha256": "e48915074d8d462e48c5a7169d083bae729edca4c487f1a0bec3391d4cc45a65",
+          "size": 33976240
         },
         "windows-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-03-cd29fe98715e/herdr-windows-x86_64.zip",
-          "sha256": "e4c8bf2724407c33e223c9381217b9f64483889bec3806ec0a2026680ecb0b15",
-          "size": 13473201,
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-ede644794178/herdr-windows-x86_64.zip",
+          "sha256": "1b9fd3e317d11d89f0004a74d01c1d057d641a6c2909edcec7ba07a28985b376",
+          "size": 13488020,
           "format": "zip"
         }
       }

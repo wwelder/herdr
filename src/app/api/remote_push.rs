@@ -68,6 +68,9 @@ struct AlertContext {
     workspace_id: String,
     /// What the peer read off the agent's screen (`pending_request`).
     request: Option<String>,
+    /// The peer marked the agent a subagent (`codex exec`): it never alerts,
+    /// including when its pane exits or drops off the peer's list.
+    subagent: bool,
 }
 
 /// One reachable remote agent, as read from the store.
@@ -146,6 +149,7 @@ impl RemoteAgent {
                     .pending_request
                     .as_deref()
                     .map(|request| request.chars().take(280).collect()),
+                subagent: agent.subagent,
             },
         }
     }
@@ -187,6 +191,9 @@ impl RemoteTransition {
     /// "llm-opt on Jerry's Mac Studio needs attention". `None` for a pane no
     /// agent has held, or a title that sanitizes away, like the local path.
     fn notification(self) -> Option<PushNotification> {
+        if self.alert.subagent {
+            return None;
+        }
         let title_agent = self.alert.title_agent?;
         let agent = format!("{title_agent} on {}", self.alert.machine);
         let title = super::sanitized_notification_text(
@@ -671,6 +678,30 @@ mod tests {
         assert_eq!(alerts[0].body, "Bash command git push");
 
         poll(&app, vec![blocked]);
+        assert!(sync(&mut app, &capture).is_empty());
+    }
+
+    #[test]
+    fn a_remote_subagent_never_pushes() {
+        let (mut app, capture, agent) = seeded(direct_push(), "worker");
+        let mut subagent = agent.clone();
+        subagent.subagent = true;
+        poll(&app, vec![subagent.clone()]);
+        assert!(sync(&mut app, &capture).is_empty());
+
+        for status in [
+            AgentStatus::Blocked,
+            AgentStatus::Idle,
+            AgentStatus::Working,
+        ] {
+            subagent.agent_status = status;
+            poll(&app, vec![subagent.clone()]);
+            assert!(sync(&mut app, &capture).is_empty(), "{status:?}");
+        }
+        assert!(relay(&app, &agent, AgentStatus::Blocked));
+        assert!(sync(&mut app, &capture).is_empty(), "a relayed status");
+        // Its pane dropping off the peer's list is no death alert either.
+        poll(&app, Vec::new());
         assert!(sync(&mut app, &capture).is_empty());
     }
 

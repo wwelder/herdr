@@ -1090,6 +1090,7 @@ mod tests {
             terminal_title_stripped: None,
             display_agent: None,
             agent_status: status,
+            subagent: false,
             input_pending: false,
             input_prompt_kind: None,
             composer: Default::default(),

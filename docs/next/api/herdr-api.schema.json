@@ -11886,6 +11886,10 @@
                 "null"
               ]
             },
+            "subagent": {
+              "description": "A subagent another agent spawned (`codex exec`, alias `e`). Listed so an\norchestrating agent can see it; owner surfaces hide it, and it gets no\nalerts or Gram entries. Absent (false) for a main agent, an archived one,\nand from older daemons.",
+              "type": "boolean"
+            },
             "tab_id": {
               "type": "string"
             },

@@ -93,6 +93,8 @@ pub enum AppEvent {
         /// for synthetic/test events targeting the current runtime.
         runtime_epoch: Option<u64>,
         agent: Agent,
+        /// The agent process runs as a subagent (`codex exec`).
+        subagent: bool,
         observed_at: Instant,
     },
     /// The current Codex input screen is visible during managed startup.

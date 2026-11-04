@@ -257,6 +257,10 @@ pub struct TerminalState {
     pub id: TerminalId,
     pub cwd: PathBuf,
     pub detected_agent: Option<Agent>,
+    /// The last agent process detection found runs as a subagent (`codex exec`).
+    /// Kept after the process exits so its exit stays as quiet as its run; the
+    /// next detected agent process overwrites it. Read through [`Self::is_subagent`].
+    pub subagent_process: bool,
     pub fallback_state: AgentState,
     fallback_visible_blocker: bool,
     fallback_observed_at: Option<Instant>,
@@ -359,6 +363,7 @@ impl TerminalState {
             id,
             cwd,
             detected_agent: None,
+            subagent_process: false,
             fallback_state: AgentState::Unknown,
             fallback_visible_blocker: false,
             fallback_observed_at: None,
@@ -2558,6 +2563,16 @@ impl TerminalState {
             .and_then(crate::detect::parse_agent_label)
     }
 
+    /// This pane's agent is a subagent another agent spawned (`codex exec`): it
+    /// gets no alerts, Gram entries or agent-panel row. A different agent that
+    /// took the pane over without a process detection is not one.
+    pub fn is_subagent(&self) -> bool {
+        self.subagent_process
+            && self
+                .effective_known_agent()
+                .is_none_or(|agent| agent == Agent::Codex)
+    }
+
     pub(crate) fn unchanged_effective_state_change_at(&self, now: Instant) -> EffectiveStateChange {
         let agent_label = self.effective_agent_label().map(str::to_string);
         let known_agent = self.effective_known_agent();
@@ -2863,6 +2878,7 @@ impl TerminalState {
     pub fn clear_agent_runtime_identity_after_respawn(&mut self) {
         self.reset_turn_counter(TurnCounterResetPath::PaneRespawn);
         self.detected_agent = None;
+        self.subagent_process = false;
         self.fallback_state = AgentState::Unknown;
         self.fallback_visible_blocker = false;
         self.fallback_observed_at = None;

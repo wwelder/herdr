@@ -1178,6 +1178,7 @@ impl App {
             terminal_title_stripped: pane.terminal_title_stripped,
             display_agent: pane.display_agent,
             agent_status: pane.agent_status,
+            subagent: terminal.is_subagent(),
             pending_request,
             input_pending: pane.input_pending,
             input_prompt_kind: pane.input_prompt_kind,
@@ -1459,6 +1460,8 @@ fn archived_agent_info(
         terminal_title_stripped: None,
         display_agent: Some(record.kind.clone()),
         agent_status: crate::api::schema::AgentStatus::Idle,
+        // An archived agent has no process to classify.
+        subagent: false,
         input_pending: false,
         input_prompt_kind: None,
         composer: Default::default(),

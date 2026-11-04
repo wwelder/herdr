@@ -1892,6 +1892,7 @@ mod tests {
         app.handle_internal_event(crate::events::AppEvent::AgentProcessDetected {
             pane_id,
             agent: Agent::Pi,
+            subagent: false,
             observed_at: observed_at + std::time::Duration::from_secs(1),
             runtime_epoch: None,
         });
@@ -3656,6 +3657,7 @@ mod tests {
                 pane_id,
                 runtime_epoch: Some(retired_target_epoch),
                 agent: Agent::Codex,
+                subagent: false,
                 observed_at,
             }
         ));

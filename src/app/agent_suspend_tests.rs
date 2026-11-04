@@ -38,6 +38,7 @@ fn detect(app: &mut AppState, pane_id: PaneId, agent: Agent, at: Instant) {
         pane_id,
         runtime_epoch: None,
         agent,
+        subagent: false,
         observed_at: at,
     });
 }

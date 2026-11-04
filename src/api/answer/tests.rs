@@ -159,6 +159,7 @@ fn harness(questions: Value) -> Harness {
         terminal_title_stripped: None,
         display_agent: None,
         agent_status: crate::api::schema::AgentStatus::Blocked,
+        subagent: false,
         input_pending: true,
         input_prompt_kind: None,
         composer: Default::default(),

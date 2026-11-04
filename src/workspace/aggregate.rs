@@ -32,7 +32,11 @@ impl Tab {
                 let pane = self.panes.get(id)?;
                 let terminal = terminals.get(&pane.attached_terminal_id)?;
                 let agent_kind_label = terminal.effective_agent_label().map(str::to_string);
-                if terminal.agent_name.is_none() && agent_kind_label.is_none() {
+                // A subagent (`codex exec`) is another agent's helper, not one of the
+                // owner's agents; its pane stays, it just gets no row.
+                if (terminal.agent_name.is_none() && agent_kind_label.is_none())
+                    || terminal.is_subagent()
+                {
                     return None;
                 }
                 Some(PaneDetail {

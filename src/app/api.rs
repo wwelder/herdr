@@ -1118,6 +1118,10 @@ impl App {
             let Some(terminal) = self.state.terminals.get(&pane.attached_terminal_id) else {
                 continue;
             };
+            // A subagent (`codex exec`) works for another agent, not the owner.
+            if terminal.is_subagent() {
+                continue;
+            }
             // Only agent panes notify — an unrecognised terminal has no effective label.
             let Some(agent_label) = terminal.effective_agent_label() else {
                 continue;
@@ -2397,6 +2401,9 @@ fn live_activity_content_state(agents: &[crate::api::schema::AgentInfo]) -> serd
         }
     }
 
+    // Subagents (`codex exec`) work for another agent; the owner never sees them here.
+    let agents: Vec<&crate::api::schema::AgentInfo> =
+        agents.iter().filter(|agent| !agent.subagent).collect();
     let needs_you_count = agents
         .iter()
         .filter(|agent| agent.agent_status == AgentStatus::Blocked)

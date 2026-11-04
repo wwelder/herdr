@@ -359,6 +359,7 @@ async fn publish_agent_process_detected_event(
     pane_id: PaneId,
     runtime_epoch: u64,
     agent: Agent,
+    subagent: bool,
     observed_at: std::time::Instant,
 ) {
     if let Err(e) = state_events
@@ -366,6 +367,7 @@ async fn publish_agent_process_detected_event(
             pane_id,
             runtime_epoch: Some(runtime_epoch),
             agent,
+            subagent,
             observed_at,
         })
         .await
@@ -872,6 +874,25 @@ struct ProcessProbeResult {
     /// The process that identified as `agent`, which need not lead its job.
     agent_pid: Option<u32>,
     process_name: Option<String>,
+    /// `agent` is a `codex exec` subagent run (see `crate::detect::is_codex_exec_argv`).
+    subagent: bool,
+}
+
+/// Whether the job's agent process runs as a subagent: Codex started with `exec`.
+/// Only the identified process counts, so an interactive Codex running a
+/// `codex exec` tool call in its own job stays a main agent.
+fn job_agent_is_subagent(
+    job: &crate::platform::ForegroundJob,
+    agent: Agent,
+    agent_pid: u32,
+) -> bool {
+    agent == Agent::Codex
+        && job
+            .processes
+            .iter()
+            .find(|process| process.pid == agent_pid)
+            .and_then(|process| process.argv.as_deref())
+            .is_some_and(crate::detect::is_codex_exec_argv)
 }
 
 fn agent_hint_for_foreground_job_members(
@@ -918,6 +939,7 @@ fn process_probe_result(
         agent: Some(agent),
         agent_pid: Some(agent_pid),
         process_name: Some(process_name),
+        subagent: job_agent_is_subagent(job, agent, agent_pid),
     }
 }
 
@@ -973,6 +995,7 @@ fn probe_foreground_process_from_jobs(
             agent: None,
             agent_pid: None,
             process_name: None,
+            subagent: false,
         };
     }
 
@@ -982,6 +1005,7 @@ fn probe_foreground_process_from_jobs(
         agent: None,
         agent_pid: None,
         process_name: None,
+        subagent: false,
     }
 }
 
@@ -1202,6 +1226,7 @@ fn spawn_basic_detection_task(
                                 pane_id,
                                 runtime_epoch,
                                 agent,
+                                probe.subagent,
                                 now,
                             )
                             .await;
@@ -3216,6 +3241,7 @@ impl PaneRuntime {
                         if pid > 0 {
                             let probe = probe_foreground_process(pid, foreground_pgid);
                             let process_name = probe.process_name;
+                            let probe_subagent = probe.subagent;
                             let process_group_id = probe.process_group_id;
                             let tracked_process_group_id = process_group_for_change_tracking(
                                 foreground_pgid,
@@ -3291,6 +3317,7 @@ impl PaneRuntime {
                                             pane_id,
                                             epoch,
                                             agent,
+                                            probe_subagent,
                                             now,
                                         )
                                         .await;

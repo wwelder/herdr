@@ -872,6 +872,49 @@ fn is_interactive_letta_process(process: &crate::platform::ForegroundProcess) ->
     letta_first_arg_after_backend_selection(cli_args).is_none_or(|arg| arg.starts_with('-'))
 }
 
+/// Whether `argv` runs Codex non-interactively: `codex exec` (alias `e`), the
+/// way one agent spawns another as a subagent. The subcommand is the first
+/// argument after the codex binary (or its `node` script) that is not an
+/// option or the value of one of Codex's top-level options.
+pub fn is_codex_exec_argv(argv: &[String]) -> bool {
+    /// Codex's top-level options that take a separate value.
+    const VALUE_OPTIONS: &[&str] = &[
+        "-c",
+        "--config",
+        "-m",
+        "--model",
+        "-p",
+        "--profile",
+        "-s",
+        "--sandbox",
+        "-a",
+        "--ask-for-approval",
+        "-C",
+        "--cd",
+        "-i",
+        "--image",
+        "--add-dir",
+        "--enable",
+        "--disable",
+        "--local-provider",
+    ];
+    let Some(binary) = argv
+        .iter()
+        .position(|arg| parse_agent_label(arg) == Some(Agent::Codex))
+    else {
+        return false;
+    };
+    let mut args = argv[binary + 1..].iter();
+    while let Some(arg) = args.next() {
+        if VALUE_OPTIONS.contains(&arg.as_str()) {
+            let _ = args.next();
+        } else if !arg.starts_with('-') {
+            return matches!(arg.as_str(), "exec" | "e");
+        }
+    }
+    false
+}
+
 fn resolved_agent_name_from_path_token(token: &str) -> Option<String> {
     let path = std::path::Path::new(token);
     if path.components().count() < 2 {
@@ -950,6 +993,42 @@ fn is_python_runtime(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_exec_argv_is_a_subagent_run() {
+        let argv = |args: &[&str]| args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
+        for subagent in [
+            &[
+                "/opt/homebrew/bin/codex",
+                "exec",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "-C",
+                "/tmp/wt",
+                "-",
+            ][..],
+            &["codex", "e", "fix it"],
+            &["codex", "-m", "gpt-5", "exec", "-"],
+            &["codex", "--config", "model=o3", "--full-auto", "exec"],
+            &[
+                "node",
+                "/usr/lib/node_modules/@openai/codex/bin/codex.js",
+                "exec",
+            ],
+        ] {
+            assert!(is_codex_exec_argv(&argv(subagent)), "{subagent:?}");
+        }
+        for main in [
+            &["codex"][..],
+            &["codex", "--dangerously-bypass-approvals-and-sandbox"],
+            &["codex", "resume", "--last"],
+            &["codex", "fix the exec path"],
+            &["codex", "-m", "exec"],
+            &["claude", "exec"],
+            &["node", "exec", "codex"],
+        ] {
+            assert!(!is_codex_exec_argv(&argv(main)), "{main:?}");
+        }
+    }
 
     fn foreground_process(
         pid: u32,

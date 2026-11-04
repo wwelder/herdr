@@ -1484,10 +1484,12 @@ impl AppState {
             AppEvent::AgentProcessDetected {
                 pane_id,
                 agent,
+                subagent,
                 observed_at,
                 ..
             } => self
                 .update_terminal_state(pane_id, |terminal| {
+                    terminal.subagent_process = subagent;
                     Some(terminal.set_detected_agent_process_at(agent, observed_at))
                 })
                 .into_iter()
@@ -2136,7 +2138,8 @@ impl AppState {
             .get(ws_idx)?
             .pane_state(pane_id)
             .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))?;
-        if terminal_state.state != expected_state {
+        // A subagent (`codex exec`) is hidden from the owner: no toast, no sound.
+        if terminal_state.state != expected_state || terminal_state.is_subagent() {
             return None;
         }
         if terminal_state
@@ -3386,6 +3389,7 @@ mod tests {
                 pane_id,
                 runtime_epoch: None,
                 agent: Agent::Pi,
+                subagent: false,
                 observed_at: Instant::now(),
             });
         }
@@ -3641,6 +3645,7 @@ mod tests {
             runtime_epoch: None,
             pane_id,
             agent: Agent::Pi,
+            subagent: false,
             observed_at: Instant::now(),
         });
         let direct_idle = state
@@ -3662,6 +3667,7 @@ mod tests {
             runtime_epoch: None,
             pane_id,
             agent: Agent::Pi,
+            subagent: false,
             observed_at: Instant::now(),
         });
         for agent_state in [AgentState::Working, AgentState::Blocked] {
@@ -3701,6 +3707,7 @@ mod tests {
             runtime_epoch: None,
             pane_id,
             agent: Agent::Codex,
+            subagent: false,
             observed_at: Instant::now(),
         });
         state.handle_app_event(AppEvent::StateChanged {
@@ -4025,6 +4032,7 @@ mod tests {
             pane_id,
             runtime_epoch: None,
             agent: Agent::Pi,
+            subagent: false,
             observed_at: std::time::Instant::now(),
         });
         state.handle_app_event(AppEvent::AgentResumeReported {
@@ -4107,6 +4115,7 @@ mod tests {
             pane_id,
             runtime_epoch: None,
             agent: Agent::Pi,
+            subagent: false,
             observed_at: std::time::Instant::now(),
         });
         state.handle_app_event(AppEvent::HookStateReported {

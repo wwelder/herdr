@@ -5,6 +5,7 @@ mod agent_view;
 pub(super) mod agents;
 mod env;
 mod gram;
+pub(crate) mod gram_events;
 #[cfg(unix)]
 pub(crate) use gram::gram_push_notification;
 mod integrations;
@@ -315,6 +316,8 @@ impl App {
             }
             return Vec::new();
         }
+        // herdr shut this runtime down itself; its exit is no death to report.
+        let mut intentional_exit = false;
         if let AppEvent::PaneDied {
             pane_id,
             runtime_epoch,
@@ -322,6 +325,8 @@ impl App {
         } = &ev
         {
             let matches = self.pane_runtime_epoch_matches(*pane_id, *runtime_epoch);
+            intentional_exit = runtime_epoch.is_some()
+                && self.expected_pane_exit_epochs.get(pane_id).copied() == *runtime_epoch;
             self.consume_expected_pane_exit_epoch(*pane_id, *runtime_epoch);
             if !matches {
                 tracing::debug!(
@@ -514,6 +519,14 @@ impl App {
                     self.refresh_new_herdr_toast_context_for_update(&update, &previous_toast);
                     self.emit_pane_state_update(&update);
                     self.emit_apns_agent_notifications(std::slice::from_ref(&update), true);
+                    self.record_gram_events(
+                        std::slice::from_ref(&update),
+                        if intentional_exit {
+                            gram_events::GramTrigger::Shutdown
+                        } else {
+                            gram_events::GramTrigger::PaneDeath
+                        },
+                    );
                     self.emit_live_activity_updates();
                 }
                 // A replacement that exits before reporting the staged session is
@@ -655,6 +668,7 @@ impl App {
             self.emit_pane_state_update(update);
         }
         self.emit_apns_agent_notifications(&pane_updates, false);
+        self.record_gram_events(&pane_updates, gram_events::GramTrigger::StateChange);
         self.emit_live_activity_updates();
         self.sync_agent_metadata_deadline();
         if let Some((
@@ -1308,6 +1322,11 @@ impl App {
     }
 
     pub(super) fn emit_event(&mut self, event: crate::api::schema::EventEnvelope) {
+        if let crate::api::schema::EventData::PaneExited { pane_id, .. }
+        | crate::api::schema::EventData::PaneClosed { pane_id, .. } = &event.data
+        {
+            self.resolve_gram_wait(pane_id);
+        }
         self.run_plugin_event_hooks(&event);
         self.event_hub.push(event);
     }

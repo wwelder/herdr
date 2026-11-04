@@ -358,6 +358,11 @@ mod tests {
             }),
             origin_id: String::new(),
             sender: None,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         }
     }
 

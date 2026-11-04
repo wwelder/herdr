@@ -38,17 +38,17 @@ use base64::Engine as _;
 
 use super::responses::{encode_error, encode_success};
 use crate::api::schema::{
-    GramDeleteParams, GramDirection, GramFileInfo, GramFileUpload, GramGetFileChunkParams,
-    GramGetFileParams, GramGrabParams, GramListParams, GramMarkReadParams, GramMessageInfo,
-    GramPostParams, GramSendParams, GramUploadChunkParams, GramUploadDiscardParams,
-    GramUploadStreamParams, ResponseResult,
+    GramDeleteParams, GramDirection, GramEventKind, GramFileInfo, GramFileUpload,
+    GramGetFileChunkParams, GramGetFileParams, GramGrabParams, GramListParams, GramMarkReadParams,
+    GramMessageInfo, GramPostParams, GramSendParams, GramUploadChunkParams,
+    GramUploadDiscardParams, GramUploadStreamParams, ResponseResult,
 };
 #[cfg(unix)]
 use crate::api::schema::{GramRelayCall, GramRelayParams};
 use crate::app::App;
 use crate::persist::gram::{
-    new_id, GramDirection as StoredDirection, GramFile, GramItem, MAX_LABEL_BYTES, MAX_MIME_BYTES,
-    MAX_TEXT_BYTES,
+    new_id, GramDirection as StoredDirection, GramEventKind as StoredEventKind, GramFile, GramItem,
+    MAX_LABEL_BYTES, MAX_MIME_BYTES, MAX_TEXT_BYTES,
 };
 
 /// Ceiling on a `gram.list` page. A page is meant to be one screenful plus the
@@ -236,6 +236,11 @@ impl App {
                     origin_id: store_id.clone(),
                     // Relayed from another machine: never a local agent's Gram.
                     sender: None,
+                    kind: None,
+                    pane_id: None,
+                    session: None,
+                    resolved: false,
+                    source_key: None,
                 };
                 match crate::persist::gram::append(item.clone()) {
                     Ok(_) => {
@@ -379,6 +384,11 @@ impl App {
             file,
             origin_id: store_id.clone(),
             sender,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         };
 
         match crate::persist::gram::append(item.clone()) {
@@ -461,6 +471,11 @@ impl App {
             file,
             origin_id: store_id.clone(),
             sender: None,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         };
 
         match crate::persist::gram::append(item.clone()) {
@@ -1355,6 +1370,14 @@ fn gram_item_to_info(item: GramItem, labels: &MachineLabels) -> GramMessageInfo 
         }),
         origin_id: item.origin_id,
         machine_label,
+        kind: item.kind.map(|kind| match kind {
+            StoredEventKind::Blocked => GramEventKind::Blocked,
+            StoredEventKind::Recap => GramEventKind::Recap,
+            StoredEventKind::Died => GramEventKind::Died,
+        }),
+        resolved: (item.kind == Some(StoredEventKind::Blocked)).then_some(item.resolved),
+        pane_id: item.pane_id,
+        session: item.session,
     }
 }
 
@@ -1371,6 +1394,11 @@ fn is_open_shared_queue(item: &GramItem) -> bool {
 /// minus the shared open queue — an agent should not be able to delete unclaimed
 /// work it never touched out from under the owner.
 fn agent_may_delete(item: &GramItem, identity: &str) -> bool {
+    // herdr's own entries about an agent are the owner's, even when `from` is the
+    // agent's name.
+    if item.kind.is_some() {
+        return false;
+    }
     let sent_by_me = item.direction == StoredDirection::AgentToOwner && item.from == identity;
     let addressed_to_me =
         item.direction == StoredDirection::OwnerToAgent && item.to.as_deref() == Some(identity);
@@ -1407,6 +1435,11 @@ fn apply_delete(
 /// another agent's direct message (which is how a secret is sent). The owner (no
 /// caller pane) can see everything.
 fn agent_can_see(item: &GramItem, identity: &str) -> bool {
+    // herdr's own entries about an agent (blocked, recap, died) are the owner's
+    // inbox, not the agent's mail, even though `from` names the agent.
+    if item.kind.is_some() {
+        return false;
+    }
     let addressed_to_me =
         item.direction == StoredDirection::OwnerToAgent && item.to.as_deref() == Some(identity);
     let grabbed_by_me = item.grabbed_by.as_deref() == Some(identity);
@@ -1497,6 +1530,11 @@ mod tests {
             file: None,
             origin_id: "machine_test".to_string(),
             sender: None,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         }
     }
 
@@ -1551,6 +1589,85 @@ mod tests {
         assert!(ids.contains(&"sent".to_string()));
         // A shared item grabbed by another agent is hidden.
         assert!(!ids.contains(&"theirs".to_string()));
+    }
+
+    fn blocked_event(id: &str, from: &str) -> GramItem {
+        let mut item = owner_shared(id);
+        item.direction = StoredDirection::AgentToOwner;
+        item.from = from.to_string();
+        item.read_by_owner = false;
+        item.text = "Allow git push?".to_string();
+        item.kind = Some(StoredEventKind::Blocked);
+        item.pane_id = Some("w1:p1".to_string());
+        item.session = Some("default".to_string());
+        item
+    }
+
+    #[test]
+    fn herdrs_own_entries_are_the_owners_alone() {
+        let event = blocked_event("event", "alpha");
+        let mut sent = event.clone();
+        sent.id = "sent".to_string();
+        sent.kind = None;
+        let items = vec![event.clone(), sent];
+
+        let ids: Vec<String> = filter_agent_view(&items, "alpha", false)
+            .into_iter()
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["sent"],
+            "the agent sees its own send, not the entry"
+        );
+        assert!(!agent_may_delete(&event, "alpha"));
+        let mut items = items;
+        assert!(matches!(
+            apply_delete(&mut items, "event", Some("alpha")),
+            (DeleteOutcome::Forbidden, false)
+        ));
+        assert_eq!(filter_owner_view(&items, false, true).len(), 2);
+        assert!(
+            filter_owner_view(&items, true, false).is_empty(),
+            "never queued"
+        );
+    }
+
+    #[test]
+    fn event_entries_carry_their_kind_pane_and_session_to_the_wire() {
+        let mut resolved = blocked_event("blocked", "alpha");
+        resolved.resolved = true;
+        let info =
+            serde_json::to_value(gram_item_to_info(resolved, &MachineLabels::new())).unwrap();
+        assert_eq!(info["kind"], "blocked");
+        assert_eq!(info["pane_id"], "w1:p1");
+        assert_eq!(info["session"], "default");
+        assert_eq!(info["resolved"], true);
+
+        let mut open = blocked_event("open", "alpha");
+        open.resolved = false;
+        let info = serde_json::to_value(gram_item_to_info(open, &MachineLabels::new())).unwrap();
+        assert_eq!(info["resolved"], false, "a blocked entry always says");
+
+        let mut recap = blocked_event("recap", "alpha");
+        recap.kind = Some(StoredEventKind::Recap);
+        recap.source_key = Some("claude:u1".to_string());
+        let info = serde_json::to_value(gram_item_to_info(recap, &MachineLabels::new())).unwrap();
+        assert_eq!(info["kind"], "recap");
+        assert!(
+            info.get("resolved").is_none(),
+            "blocked entries only: {info}"
+        );
+        assert!(info.get("source_key").is_none(), "storage only: {info}");
+
+        let plain = serde_json::to_value(gram_item_to_info(
+            owner_shared("plain"),
+            &MachineLabels::new(),
+        ))
+        .unwrap();
+        for field in ["kind", "pane_id", "session", "resolved"] {
+            assert!(plain.get(field).is_none(), "{field} in {plain}");
+        }
     }
 
     #[test]

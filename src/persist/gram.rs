@@ -79,6 +79,19 @@ pub enum GramDirection {
     OwnerToAgent,
 }
 
+/// What an entry herdr wrote itself is about. Absent on an agent's or the
+/// owner's own message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GramEventKind {
+    /// The agent is waiting on the owner; resolved once it moves on.
+    Blocked,
+    /// The agent finished a turn.
+    Recap,
+    /// The agent's process exited.
+    Died,
+}
+
 /// Metadata for a file attached to a gram message. The bytes live in the blob
 /// store ([`crate::persist::gram_files`]) at `gram-files/<message-id>/<name>`; this
 /// record carries only what a client needs to show, download, and verify it.
@@ -147,6 +160,25 @@ pub struct GramItem {
     /// by the `from` name alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sender: Option<GramSender>,
+    /// Set on an entry herdr wrote itself about one of its own agents (see
+    /// [`crate::app::api::gram_events`]). Such an entry is the owner's alone:
+    /// no agent view, guest view or push shows it. `None` on every message
+    /// someone sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<GramEventKind>,
+    /// The public pane id of the agent an event entry is about.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    /// The herdr session that pane lives in (`default` for the unnamed one).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// A blocked entry whose agent has moved on.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resolved: bool,
+    /// What a recap was read from (the transcript record or turn), so the same
+    /// turn is never recapped twice. Storage only; never on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_key: Option<String>,
 }
 
 /// Who sent a local agent's gram: its terminal's public id and the agent kind
@@ -333,6 +365,105 @@ fn normalize(items: &mut Vec<GramItem>) -> Vec<String> {
     files_to_remove
 }
 
+/// One change herdr makes to the store about its own agents. Entries are keyed
+/// by their `session` and `pane_id`, so the servers of different sessions that
+/// share this store never touch each other's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GramEvent {
+    /// A `blocked` entry. Skipped while that pane's open blocked entry already
+    /// asks the same (a repeated report, or the same wait seen again after a
+    /// restart or live handoff); an open one asking something else is resolved
+    /// first.
+    Blocked(GramItem),
+    /// The pane's agent left the blocked state: resolve its open entry.
+    Unblocked { session: String, pane_id: String },
+    /// A `recap` or `died` entry. A recap whose `source_key` that pane already
+    /// has is skipped.
+    Append(GramItem),
+}
+
+fn same_pane(item: &GramItem, session: &str, pane_id: &str) -> bool {
+    item.session.as_deref() == Some(session) && item.pane_id.as_deref() == Some(pane_id)
+}
+
+fn is_open_blocked(item: &GramItem) -> bool {
+    item.kind == Some(GramEventKind::Blocked) && !item.resolved
+}
+
+/// Resolve the pane's open blocked entries; whether there were any.
+fn resolve_blocked(items: &mut [GramItem], session: &str, pane_id: &str) -> bool {
+    let mut changed = false;
+    for item in items
+        .iter_mut()
+        .filter(|item| is_open_blocked(item) && same_pane(item, session, pane_id))
+    {
+        item.resolved = true;
+        changed = true;
+    }
+    changed
+}
+
+/// Apply `events` in order; whether the list changed.
+pub fn apply_events(items: &mut Vec<GramItem>, events: Vec<GramEvent>) -> bool {
+    let mut changed = false;
+    for event in events {
+        match event {
+            GramEvent::Blocked(item) => {
+                let (Some(session), Some(pane_id)) = (item.session.clone(), item.pane_id.clone())
+                else {
+                    continue;
+                };
+                let asked = items.iter().any(|open| {
+                    is_open_blocked(open)
+                        && same_pane(open, &session, &pane_id)
+                        && open.text == item.text
+                });
+                if !asked {
+                    resolve_blocked(items, &session, &pane_id);
+                    items.push(item);
+                    changed = true;
+                }
+            }
+            GramEvent::Unblocked { session, pane_id } => {
+                changed |= resolve_blocked(items, &session, &pane_id);
+            }
+            GramEvent::Append(item) => {
+                let repeated = item.source_key.is_some()
+                    && items.iter().any(|seen| {
+                        seen.kind == item.kind
+                            && seen.source_key == item.source_key
+                            && seen.session == item.session
+                            && seen.pane_id == item.pane_id
+                    });
+                if !repeated {
+                    items.push(item);
+                    changed = true;
+                }
+            }
+        }
+    }
+    changed
+}
+
+/// Apply `events` to the store in one locked read-modify-write; the file is
+/// rewritten only when something changed.
+pub fn record_events(events: Vec<GramEvent>) -> std::io::Result<()> {
+    record_events_in(&config_base(), events)
+}
+
+fn record_events_in(dir: &Path, events: Vec<GramEvent>) -> std::io::Result<()> {
+    update_in_checked(dir, |items| ((), apply_events(items, events))).map(|_| ())
+}
+
+/// The panes of `session` with an open blocked entry.
+pub fn open_blocked_panes(items: &[GramItem], session: &str) -> Vec<String> {
+    items
+        .iter()
+        .filter(|item| is_open_blocked(item) && item.session.as_deref() == Some(session))
+        .filter_map(|item| item.pane_id.clone())
+        .collect()
+}
+
 fn append_in(dir: &Path, item: GramItem) -> std::io::Result<Vec<GramItem>> {
     let (_, items) = update_in(dir, move |items| items.push(item))?;
     Ok(items)
@@ -413,6 +544,11 @@ mod tests {
             file: None,
             origin_id: String::new(),
             sender: None,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         }
     }
 
@@ -609,6 +745,132 @@ mod tests {
         })
         .unwrap();
         assert_ne!(std::fs::read_to_string(&path).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn event(kind: GramEventKind, session: &str, pane: &str, text: &str) -> GramItem {
+        let mut it = item(&format!("{session}-{pane}-{text}"), 1);
+        it.direction = GramDirection::AgentToOwner;
+        it.from = "claude".to_string();
+        it.text = text.to_string();
+        it.kind = Some(kind);
+        it.session = Some(session.to_string());
+        it.pane_id = Some(pane.to_string());
+        it
+    }
+
+    fn unblocked(session: &str, pane: &str) -> GramEvent {
+        GramEvent::Unblocked {
+            session: session.to_string(),
+            pane_id: pane.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_blocked_episode_is_one_entry_until_the_agent_moves_on() {
+        let mut items = Vec::new();
+        let ask =
+            || GramEvent::Blocked(event(GramEventKind::Blocked, "default", "w1:p1", "Run it?"));
+        assert!(apply_events(&mut items, vec![ask()]));
+        // The same wait reported again (a repeated status, a restart, a handoff).
+        assert!(!apply_events(&mut items, vec![ask()]));
+        assert_eq!(items.len(), 1);
+        assert!(!items[0].resolved);
+
+        // Another session's pane with the same id is not this one.
+        assert!(!apply_events(&mut items, vec![unblocked("work", "w1:p1")]));
+        assert!(apply_events(
+            &mut items,
+            vec![unblocked("default", "w1:p1")]
+        ));
+        assert!(items[0].resolved);
+        assert!(!apply_events(
+            &mut items,
+            vec![unblocked("default", "w1:p1")]
+        ));
+
+        // A new episode is a new entry.
+        assert!(apply_events(&mut items, vec![ask()]));
+        assert_eq!(items.len(), 2);
+        assert!(!items[1].resolved);
+    }
+
+    #[test]
+    fn a_different_question_resolves_the_stale_open_entry() {
+        let mut items = vec![event(GramEventKind::Blocked, "default", "w1:p1", "old?")];
+        assert!(apply_events(
+            &mut items,
+            vec![GramEvent::Blocked(event(
+                GramEventKind::Blocked,
+                "default",
+                "w1:p1",
+                "new?"
+            ))]
+        ));
+        assert!(items[0].resolved, "the stale wait is over");
+        assert!(!items[1].resolved);
+        assert_eq!(open_blocked_panes(&items, "default"), vec!["w1:p1"]);
+        assert!(open_blocked_panes(&items, "work").is_empty());
+    }
+
+    #[test]
+    fn a_recap_of_the_same_turn_is_written_once() {
+        let mut items = Vec::new();
+        let recap = |key: Option<&str>| {
+            let mut it = event(GramEventKind::Recap, "default", "w1:p1", "Done.");
+            it.source_key = key.map(str::to_string);
+            GramEvent::Append(it)
+        };
+        assert!(apply_events(&mut items, vec![recap(Some("claude:u1"))]));
+        assert!(!apply_events(&mut items, vec![recap(Some("claude:u1"))]));
+        assert!(apply_events(&mut items, vec![recap(Some("claude:u2"))]));
+        // A fallback recap names no source and is never merged.
+        assert!(apply_events(&mut items, vec![recap(None), recap(None)]));
+        assert_eq!(items.len(), 4);
+    }
+
+    #[test]
+    fn event_fields_round_trip_and_stay_off_ordinary_records() {
+        let mut blocked = event(GramEventKind::Blocked, "default", "w1:p1", "Run it?");
+        blocked.resolved = true;
+        let json = serde_json::to_value(&blocked).unwrap();
+        assert_eq!(json["kind"], "blocked");
+        assert_eq!(json["pane_id"], "w1:p1");
+        assert_eq!(json["session"], "default");
+        assert_eq!(json["resolved"], true);
+        assert_eq!(serde_json::from_value::<GramItem>(json).unwrap(), blocked);
+
+        let plain = serde_json::to_value(item("x", 1)).unwrap();
+        for field in ["kind", "pane_id", "session", "resolved", "source_key"] {
+            assert!(plain.get(field).is_none(), "{field} in {plain}");
+        }
+    }
+
+    #[test]
+    fn concurrent_event_writers_lose_nothing_on_disk() {
+        // One store, several servers (one per session) writing at once.
+        let dir = unique_temp_dir("events");
+        let writers: Vec<_> = ["default", "work", "ops"]
+            .into_iter()
+            .map(|session| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    for n in 0..20 {
+                        let pane = format!("w1:p{n}");
+                        let mut blocked = event(GramEventKind::Blocked, session, &pane, "ok?");
+                        blocked.id = new_id();
+                        record_events_in(&dir, vec![GramEvent::Blocked(blocked)]).unwrap();
+                        record_events_in(&dir, vec![unblocked(session, &pane)]).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        let persisted = try_load_in(&dir).unwrap();
+        assert_eq!(persisted.len(), 60);
+        assert!(persisted.iter().all(|item| item.resolved));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

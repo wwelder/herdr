@@ -9,6 +9,7 @@
 mod history;
 mod index;
 mod normalize;
+pub(crate) mod reply;
 mod subagents;
 #[cfg(test)]
 pub(crate) mod tests;
@@ -164,6 +165,15 @@ pub(crate) fn read_page(path: &Path, request: &PageRequest) -> Result<Page, Tran
             with_index(&child, |view| view.page(request, limit))
         }
         None => with_index(path, |view| view.page(request, limit)),
+    }
+}
+
+/// The completion recap omp wrote for the newest turn, once it exists.
+pub(crate) fn recap(session_path: &Path) -> std::io::Result<Option<TranscriptRecap>> {
+    match with_index(session_path, |view| view.current_recap()) {
+        Ok(recap) => Ok(recap),
+        Err(TranscriptError::Unavailable(error)) => Err(error),
+        Err(other) => Err(std::io::Error::other(other.message())),
     }
 }
 

@@ -1561,6 +1561,11 @@ fn mirror_relayed(
         }),
         origin_id: String::new(),
         sender,
+        kind: None,
+        pane_id: None,
+        session: None,
+        resolved: false,
+        source_key: None,
     };
     let guests = crate::guest::store::load_store(dir).ok()?.guests;
     // Witnessed for any guest the Gram is meant for, sharing or not, so a
@@ -3722,13 +3727,32 @@ mod tests {
             file: None,
             origin_id: String::new(),
             sender: None,
+            kind: None,
+            pane_id: None,
+            session: None,
+            resolved: false,
+            source_key: None,
         })
         .unwrap();
         send_gram(&harness, "llm-opt", "the granted agent");
+        // herdr's own entry about the granted agent, its sender binding and all.
+        let mut event = crate::persist::gram::load()
+            .into_iter()
+            .find(|item| item.text == "the granted agent")
+            .unwrap();
+        event.id = "herdr-event".into();
+        event.text = "Allow git push?".into();
+        event.kind = Some(crate::persist::gram::GramEventKind::Blocked);
+        crate::persist::gram::append(event).unwrap();
 
         let result = guest_list(&harness, &guest, json!({}));
         assert_eq!(texts(&result), ["the granted agent"]);
-        for id in [elsewhere.as_str(), no_pane.as_str(), "relay-remote"] {
+        for id in [
+            elsewhere.as_str(),
+            no_pane.as_str(),
+            "relay-remote",
+            "herdr-event",
+        ] {
             let lines = harness.call(
                 &guest,
                 json!({"id": "m", "method": "gram.mark_read", "params": {"ids": [id]}}),

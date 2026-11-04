@@ -13338,6 +13338,26 @@
           ],
           "type": "string"
         },
+        "GramEventKind": {
+          "description": "What an entry herdr wrote itself about one of its agents reports. Mirrors\n[`crate::persist::gram::GramEventKind`].",
+          "oneOf": [
+            {
+              "const": "blocked",
+              "description": "The agent is waiting on the owner; `text` is its question.",
+              "type": "string"
+            },
+            {
+              "const": "recap",
+              "description": "The agent finished a turn; `text` is its recap or final reply.",
+              "type": "string"
+            },
+            {
+              "const": "died",
+              "description": "The agent's process exited; `text` is a short exit note.",
+              "type": "string"
+            }
+          ]
+        },
         "GramFileInfo": {
           "description": "File attached to a gram message, as returned to clients. Metadata only — fetch\nthe bytes with `gram.get_file`.",
           "properties": {
@@ -13493,6 +13513,17 @@
             "id": {
               "type": "string"
             },
+            "kind": {
+              "anyOf": [
+                {
+                  "$ref": "#/schemas/success_response/$defs/GramEventKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Set on an entry herdr wrote itself about one of its own agents, absent on\na message someone sent. `from` is then the agent's display name (as in\nits alerts) and `text` its question, recap or exit note. Owner view only:\nagents and guests never see these, and they push nothing."
+            },
             "machine_label": {
               "description": "Display label of the federated machine a relayed Gram came from, when\n`from` is `<alias>/<name>` and that machine has a label: the same label\nthe machine's agents carry as `machine_label`. Resolved when read, so it\nfollows a rename and covers Grams stored before it. Absent for local\nGrams, for an alias without a label, and from older daemons.",
               "type": [
@@ -13505,9 +13536,30 @@
               "description": "Install-stable identity of the daemon/store that wrote this message (see\n[`crate::persist::gram::GramItem::origin_id`]). Stable across daemon\nrestarts; empty for messages written by an older build.",
               "type": "string"
             },
+            "pane_id": {
+              "description": "The public pane id of the entry's agent, for opening it. Event entries only.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "read_by_owner": {
               "default": false,
               "type": "boolean"
+            },
+            "resolved": {
+              "description": "Blocked entries only: true once the agent left the blocked state.",
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "session": {
+              "description": "The herdr session that pane lives in, `default` for the unnamed one. Event\nentries only.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "text": {
               "type": "string"

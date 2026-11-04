@@ -10,6 +10,19 @@ pub enum GramDirection {
     OwnerToAgent,
 }
 
+/// What an entry herdr wrote itself about one of its agents reports. Mirrors
+/// [`crate::persist::gram::GramEventKind`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum GramEventKind {
+    /// The agent is waiting on the owner; `text` is its question.
+    Blocked,
+    /// The agent finished a turn; `text` is its recap or final reply.
+    Recap,
+    /// The agent's process exited; `text` is a short exit note.
+    Died,
+}
+
 /// `gram.send` — an agent sends the owner a push-notified message.
 ///
 /// The sender identity is `from` when provided; otherwise it is resolved
@@ -316,6 +329,22 @@ pub struct GramMessageInfo {
     /// Grams, for an alias without a label, and from older daemons.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub machine_label: Option<String>,
+    /// Set on an entry herdr wrote itself about one of its own agents, absent on
+    /// a message someone sent. `from` is then the agent's display name (as in
+    /// its alerts) and `text` its question, recap or exit note. Owner view only:
+    /// agents and guests never see these, and they push nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<GramEventKind>,
+    /// The public pane id of the entry's agent, for opening it. Event entries only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
+    /// The herdr session that pane lives in, `default` for the unnamed one. Event
+    /// entries only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
+    /// Blocked entries only: true once the agent left the blocked state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved: Option<bool>,
 }
 
 /// Where an effective Gram relay setting came from.

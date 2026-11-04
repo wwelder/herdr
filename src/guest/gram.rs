@@ -52,7 +52,8 @@ fn visible_in(
     name: &str,
     item: &GramItem,
 ) -> bool {
-    if grant.agent_name.is_none() || item.created_unix_ms < created_ms {
+    // herdr's own entries about an agent are the owner's alone.
+    if grant.agent_name.is_none() || item.created_unix_ms < created_ms || item.kind.is_some() {
         return false;
     }
     // The agent's name now, or a name it had when the Gram was created.

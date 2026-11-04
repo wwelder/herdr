@@ -329,7 +329,13 @@ fn normalize(items: &mut Vec<GramItem>) -> Vec<String> {
         .sum();
     let mut files_to_remove = Vec::new();
     while items.len() > MAX_ITEMS || (items.len() > 1 && total_text > MAX_TOTAL_TEXT_BYTES) {
-        let dropped = items.remove(0);
+        // herdr's own entries (blocked, recap, died) go before any real message, so
+        // busy agents' recaps never push out what someone actually sent.
+        let oldest = items
+            .iter()
+            .position(|item| item.kind.is_some())
+            .unwrap_or(0);
+        let dropped = items.remove(oldest);
         total_text = total_text.saturating_sub(dropped.text.len());
         if let Some(file) = &dropped.file {
             total_file = total_file.saturating_sub(file.size);
@@ -600,6 +606,20 @@ mod tests {
         let _ = normalize(&mut many);
         assert_eq!(many.len(), MAX_ITEMS);
         assert_eq!(many.first().unwrap().created_unix_ms, 5);
+    }
+
+    #[test]
+    fn normalize_drops_herdr_entries_before_real_messages() {
+        let mut items: Vec<GramItem> = (0..MAX_ITEMS as u64)
+            .map(|n| item(&format!("id-{n}"), n))
+            .collect();
+        let mut recap = item("recap", MAX_ITEMS as u64);
+        recap.kind = Some(GramEventKind::Recap);
+        items.push(recap);
+        let _ = normalize(&mut items);
+        assert_eq!(items.len(), MAX_ITEMS);
+        assert_eq!(items.first().unwrap().id, "id-0");
+        assert!(items.iter().all(|i| i.kind.is_none()));
     }
 
     #[test]

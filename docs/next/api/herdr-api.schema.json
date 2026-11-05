@@ -11710,6 +11710,13 @@
               ],
               "description": "The agent's chosen profile picture; absent when it has none and the\nclient shows its default. A descriptor this build cannot read (a newer\npeer's style) decodes as absent rather than failing the whole agent."
             },
+            "background": {
+              "description": "What a Claude Code agent still runs in the background, read off its footer: \"1\nshell\", \"3 local agents\", \"2 background tasks\". Present while there is any, even\nwhen the agent waits idle at its prompt; such an agent counts as running.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "completion_seq": {
               "description": "The current idle transition completed work, independently of who has viewed it.",
               "format": "uint64",

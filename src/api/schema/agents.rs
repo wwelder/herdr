@@ -521,6 +521,11 @@ pub struct AgentInfo {
     /// choice menu. Absent unless the agent is blocked or showing an input prompt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_request: Option<String>,
+    /// What a Claude Code agent still runs in the background, read off its footer: "1
+    /// shell", "3 local agents", "2 background tasks". Present while there is any, even
+    /// when the agent waits idle at its prompt; such an agent counts as running.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<String>,
     #[serde(default, skip_serializing_if = "super::is_false")]
     pub input_pending: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]

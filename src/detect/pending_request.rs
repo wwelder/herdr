@@ -66,7 +66,7 @@ fn clean(line: &str) -> &str {
 }
 
 /// A horizontal rule or a box's top or bottom edge: only box-drawing characters.
-fn is_rule(line: &str) -> bool {
+pub(super) fn is_rule(line: &str) -> bool {
     let line = line.trim();
     line.chars().count() >= 3
         && line

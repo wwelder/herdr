@@ -1169,6 +1169,12 @@ impl App {
             .and_then(|runtime| {
                 crate::detect::pending_request::pending_request(&runtime.visible_text())
             });
+        let background = (pane.agent.as_deref() == Some("claude") && pending_request.is_none())
+            .then(|| self.terminal_runtimes.get(&pane_state.attached_terminal_id))
+            .flatten()
+            .and_then(|runtime| {
+                crate::detect::background::background_work(&runtime.visible_text())
+            });
         Some(crate::api::schema::AgentInfo {
             terminal_id: pane.terminal_id,
             name: terminal.agent_name.clone(),
@@ -1180,6 +1186,7 @@ impl App {
             agent_status: pane.agent_status,
             subagent: terminal.is_subagent(),
             pending_request,
+            background,
             input_pending: pane.input_pending,
             input_prompt_kind: pane.input_prompt_kind,
             composer: pane.composer,
@@ -1452,6 +1459,7 @@ fn archived_agent_info(
 ) -> crate::api::schema::AgentInfo {
     crate::api::schema::AgentInfo {
         pending_request: None,
+        background: None,
         terminal_id: record.terminal_id.clone(),
         name: record.name.clone(),
         agent: Some(record.kind.clone()),

@@ -3,6 +3,7 @@
 //! Each pane's live bottom-of-buffer text is read periodically and matched
 //! against known agent output patterns to determine state.
 
+pub(crate) mod background;
 pub mod manifest;
 pub mod manifest_update;
 pub(crate) mod pending_request;

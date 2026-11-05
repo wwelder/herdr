@@ -148,6 +148,7 @@ fn harness(questions: Value) -> Harness {
     };
     let agent = AgentInfo {
         pending_request: None,
+        background: None,
         account: None,
         account_config_dir: None,
         account_unresolved: false,

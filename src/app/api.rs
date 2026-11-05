@@ -2421,8 +2421,20 @@ fn live_activity_content_state(agents: &[crate::api::schema::AgentInfo]) -> serd
     }
 
     // Subagents (`codex exec`) work for another agent; the owner never sees them here.
-    let agents: Vec<&crate::api::schema::AgentInfo> =
-        agents.iter().filter(|agent| !agent.subagent).collect();
+    // An agent idle at its prompt with background work (shells, subagents) is working.
+    let agents: Vec<crate::api::schema::AgentInfo> = agents
+        .iter()
+        .filter(|agent| !agent.subagent)
+        .cloned()
+        .map(|mut agent| {
+            if agent.background.is_some()
+                && matches!(agent.agent_status, AgentStatus::Idle | AgentStatus::Done)
+            {
+                agent.agent_status = AgentStatus::Working;
+            }
+            agent
+        })
+        .collect();
     let needs_you_count = agents
         .iter()
         .filter(|agent| agent.agent_status == AgentStatus::Blocked)
@@ -2537,6 +2549,16 @@ mod live_activity_content_state_tests {
         let agents = [agent("idle", Some("a")), agent("working", Some("b"))];
         let cs = live_activity_content_state(&agents);
         assert_eq!(cs["headline"], "b");
+        assert_eq!(cs["status"], "working");
+    }
+
+    #[test]
+    fn an_idle_agent_with_background_work_is_working() {
+        let mut shells = agent("idle", Some("orchestrator"));
+        shells.background = Some("1 shell".into());
+        let cs = live_activity_content_state(&[agent("idle", Some("a")), shells]);
+        assert_eq!(cs["workingCount"], 1);
+        assert_eq!(cs["headline"], "orchestrator");
         assert_eq!(cs["status"], "working");
     }
 

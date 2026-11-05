@@ -77,6 +77,11 @@ pub struct GramPostParams {
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub to: Option<String>,
+    /// Address the post to the agent in this pane of this server's session instead of
+    /// by `to`: it reaches an agent with no name, and only that pane's agent sees it.
+    /// Overrides `to`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pane_id: Option<String>,
     /// An optional file to attach, previously uploaded in chunks via
     /// `gram.upload_chunk` under `file.upload_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -335,13 +340,18 @@ pub struct GramMessageInfo {
     /// agents and guests never see these, and they push nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<GramEventKind>,
-    /// The public pane id of the entry's agent, for opening it. Event entries only.
+    /// The public pane id of the entry's agent, for opening it: event entries, a Gram an
+    /// agent sent from its pane, and a post addressed by pane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pane_id: Option<String>,
-    /// The herdr session that pane lives in, `default` for the unnamed one. Event
-    /// entries only.
+    /// The herdr session that pane lives in, `default` for the unnamed one. Set with
+    /// `pane_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// The agent's working directory when the entry was written: event entries and a
+    /// Gram an agent sent from its pane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     /// Blocked entries only: true once the agent left the blocked state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<bool>,

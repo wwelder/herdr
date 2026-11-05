@@ -241,6 +241,7 @@ impl App {
                     session: None,
                     resolved: false,
                     source_key: None,
+                    cwd: None,
                 };
                 match crate::persist::gram::append(item.clone()) {
                     Ok(_) => {
@@ -318,6 +319,7 @@ impl App {
                 let params = GramPostParams {
                     text: post.text,
                     to: Some(qualified),
+                    pane_id: None,
                     file,
                     from: Some(crate::guest::post_from(&post.guest)),
                 };
@@ -370,7 +372,11 @@ impl App {
             .caller_pane_id
             .as_deref()
             .and_then(|pane| self.caller_sender(pane));
-        let item = GramItem {
+        let place = params
+            .caller_pane_id
+            .as_deref()
+            .and_then(|pane| self.gram_pane_place(pane));
+        let mut item = GramItem {
             expired_file: None,
             id: message_id,
             direction: StoredDirection::AgentToOwner,
@@ -389,7 +395,12 @@ impl App {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         };
+        if let Some(place) = place {
+            (item.pane_id, item.session, item.cwd) =
+                (Some(place.pane_id), Some(place.session), place.cwd);
+        }
 
         match crate::persist::gram::append(item.clone()) {
             Ok(_) => {
@@ -429,16 +440,28 @@ impl App {
             return gram_unavailable(id);
         }
 
-        let to = params
-            .to
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string);
+        let place = match params.pane_id.as_deref() {
+            Some(pane) => match self.gram_pane_place(pane) {
+                Some(place) => Some(place),
+                None => {
+                    return encode_error(id, "invalid_params", format!("no pane '{pane}' here"))
+                }
+            },
+            None => None,
+        };
+        let to = match &place {
+            Some(place) => self.caller_identity(&place.pane_id),
+            None => params
+                .to
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string),
+        };
         // A direct message must name a live agent, else it would be visible to no
         // one and never expire — a silent black hole. Omit `to` for the shared
         // queue instead.
-        if let Some(target) = to.as_ref().filter(|_| check_live) {
+        if let Some(target) = to.as_ref().filter(|_| check_live && place.is_none()) {
             if !self.is_live_agent_name(target) {
                 return encode_error(
                     id,
@@ -456,7 +479,7 @@ impl App {
             Ok(file) => file,
             Err(err) => return err,
         };
-        let item = GramItem {
+        let mut item = GramItem {
             expired_file: None,
             id: message_id,
             direction: StoredDirection::OwnerToAgent,
@@ -476,7 +499,11 @@ impl App {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         };
+        if let Some(place) = place {
+            (item.pane_id, item.session) = (Some(place.pane_id), Some(place.session));
+        }
 
         match crate::persist::gram::append(item.clone()) {
             Ok(_) => encode_success(
@@ -1020,6 +1047,18 @@ impl App {
             .or_else(|| self.public_pane_id(ws_idx, pane_id))
     }
 
+    /// Where a public pane id of this server lives: the id, this session, and its
+    /// agent's working directory. `None` when it names no pane here.
+    fn gram_pane_place(&self, pane: &str) -> Option<GramPanePlace> {
+        let (ws_idx, pane_id) = self.parse_pane_id(pane)?;
+        let terminal_id = self.state.workspaces.get(ws_idx)?.terminal_id(pane_id)?;
+        Some(GramPanePlace {
+            pane_id: self.public_pane_id(ws_idx, pane_id)?,
+            session: super::gram_events::session_name(),
+            cwd: self.agent_cwd(terminal_id),
+        })
+    }
+
     /// The terminal and agent kind behind a caller pane, recorded on the Gram
     /// it sends so a guest's view follows the agent, not a reusable name.
     fn caller_sender(&self, caller_pane_id: &str) -> Option<crate::persist::gram::GramSender> {
@@ -1378,7 +1417,14 @@ fn gram_item_to_info(item: GramItem, labels: &MachineLabels) -> GramMessageInfo 
         resolved: (item.kind == Some(StoredEventKind::Blocked)).then_some(item.resolved),
         pane_id: item.pane_id,
         session: item.session,
+        cwd: item.cwd,
     }
+}
+
+struct GramPanePlace {
+    pane_id: String,
+    session: String,
+    cwd: Option<String>,
 }
 
 /// True for a shared, still-open queue item any agent may claim.
@@ -1440,10 +1486,18 @@ fn agent_can_see(item: &GramItem, identity: &str) -> bool {
     if item.kind.is_some() {
         return false;
     }
-    let addressed_to_me =
-        item.direction == StoredDirection::OwnerToAgent && item.to.as_deref() == Some(identity);
+    // A pane id is an identity only within its session: the store is shared, and an
+    // unnamed agent's "w1:p1" names a different agent in every session.
+    let here = item
+        .session
+        .as_deref()
+        .is_none_or(|session| session == super::gram_events::session_name());
+    let addressed_to_me = here
+        && item.direction == StoredDirection::OwnerToAgent
+        && item.to.as_deref() == Some(identity);
     let grabbed_by_me = item.grabbed_by.as_deref() == Some(identity);
-    let sent_by_me = item.direction == StoredDirection::AgentToOwner && item.from == identity;
+    let sent_by_me =
+        here && item.direction == StoredDirection::AgentToOwner && item.from == identity;
     is_open_shared_queue(item) || addressed_to_me || grabbed_by_me || sent_by_me
 }
 
@@ -1535,6 +1589,7 @@ mod tests {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         }
     }
 
@@ -1740,6 +1795,17 @@ mod tests {
             DeleteOutcome::Deleted(id) => Some(id.as_str()),
             _ => None,
         }
+    }
+
+    #[test]
+    fn a_pane_addressed_post_is_only_for_that_sessions_pane() {
+        let mut post = owner_shared("pane-post");
+        post.to = Some("w1:p1".to_string());
+        post.session = Some("default".to_string());
+        assert!(agent_can_see(&post, "w1:p1"));
+        // Another session's w1:p1 is another agent.
+        post.session = Some("top-l".to_string());
+        assert!(!agent_can_see(&post, "w1:p1"));
     }
 
     #[test]

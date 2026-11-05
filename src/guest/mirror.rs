@@ -363,6 +363,7 @@ mod tests {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         }
     }
 

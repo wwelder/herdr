@@ -925,6 +925,7 @@ mod tests {
             method: Method::GramPost(crate::api::schema::GramPostParams {
                 text: String::new(),
                 to: None,
+                pane_id: None,
                 file: Some(crate::api::schema::GramFileUpload {
                     upload_id: upload_id.to_string(),
                     name: "half.bin".into(),

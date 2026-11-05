@@ -131,8 +131,27 @@ impl App {
             else {
                 continue;
             };
-            let from = super::push_title_agent(terminal.agent_name.as_deref(), agent_label);
+            // A name the owner gave wins; else the pane's title, which names the task
+            // ("Assistant feature"); a status title (codex's "Action Required") or none
+            // falls back to the agent label.
+            let title = terminal
+                .terminal_title_stripped()
+                .filter(|title| !title.contains("Action Required"));
+            let from = match title.as_deref() {
+                Some(title)
+                    if terminal
+                        .agent_name
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .is_empty() =>
+                {
+                    title
+                }
+                _ => super::push_title_agent(terminal.agent_name.as_deref(), agent_label),
+            };
             let mut item = event_item(from, pane_id, session.clone());
+            item.cwd = self.agent_cwd(&pane.attached_terminal_id);
             match kind {
                 crate::push::PushKind::NeedsInput => {
                     let question = self
@@ -181,6 +200,16 @@ impl App {
         })]);
     }
 
+    /// Where a terminal's agent works: its foreground process's directory, else the
+    /// shell's.
+    pub(super) fn agent_cwd(&self, terminal_id: &crate::terminal::TerminalId) -> Option<String> {
+        let runtime = self.terminal_runtimes.get(terminal_id);
+        runtime
+            .and_then(|rt| rt.foreground_cwd().or_else(|| rt.cwd()))
+            .or_else(|| self.state.terminals.get(terminal_id).map(|t| t.cwd.clone()))
+            .and_then(|cwd| cwd.to_str().map(str::to_owned))
+    }
+
     /// The session file a terminal's agent reported: a path session ref, or the
     /// path reported beside an id ref (Claude Code, Codex).
     pub(super) fn agent_session_file(
@@ -223,7 +252,7 @@ impl App {
 }
 
 /// This server's herdr session, as clients name it.
-fn session_name() -> String {
+pub(super) fn session_name() -> String {
     crate::session::active_name().unwrap_or_else(|| crate::session::DEFAULT_SESSION_NAME.into())
 }
 
@@ -250,6 +279,7 @@ fn event_item(from: &str, pane_id: String, session: String) -> GramItem {
         session: Some(session),
         resolved: false,
         source_key: None,
+        cwd: None,
     }
 }
 

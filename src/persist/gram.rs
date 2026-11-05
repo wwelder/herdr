@@ -172,6 +172,9 @@ pub struct GramItem {
     /// The herdr session that pane lives in (`default` for the unnamed one).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// The agent's working directory when the entry was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     /// A blocked entry whose agent has moved on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resolved: bool,
@@ -555,6 +558,7 @@ mod tests {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         }
     }
 

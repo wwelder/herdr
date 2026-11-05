@@ -982,6 +982,7 @@ pub(super) fn serve_request(
                         method: Method::GramPost(GramPostParams {
                             text: params.text,
                             to: agent.name,
+                            pane_id: None,
                             file,
                             from: Some(guest.post_from()),
                         }),
@@ -1566,6 +1567,7 @@ fn mirror_relayed(
         session: None,
         resolved: false,
         source_key: None,
+        cwd: None,
     };
     let guests = crate::guest::store::load_store(dir).ok()?.guests;
     // Witnessed for any guest the Gram is meant for, sharing or not, so a
@@ -3732,6 +3734,7 @@ mod tests {
             session: None,
             resolved: false,
             source_key: None,
+            cwd: None,
         })
         .unwrap();
         send_gram(&harness, "llm-opt", "the granted agent");

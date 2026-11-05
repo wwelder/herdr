@@ -112,6 +112,7 @@ fn gram_post(args: &[String]) -> std::io::Result<i32> {
         method: Method::GramPost(GramPostParams {
             text,
             to,
+            pane_id: None,
             file: None,
             from: None,
         }),

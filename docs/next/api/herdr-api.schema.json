@@ -3157,6 +3157,13 @@
               ],
               "description": "An optional file to attach, previously uploaded in chunks via\n`gram.upload_chunk` under `file.upload_id`."
             },
+            "pane_id": {
+              "description": "Address the post to the agent in this pane of this server's session instead of\nby `to`: it reaches an agent with no name, and only that pane's agent sees it.\nOverrides `to`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "text": {
               "type": "string"
             },
@@ -13468,6 +13475,13 @@
               "minimum": 0,
               "type": "integer"
             },
+            "cwd": {
+              "description": "The agent's working directory when the entry was written: event entries and a\nGram an agent sent from its pane.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "direction": {
               "$ref": "#/schemas/success_response/$defs/GramDirection"
             },
@@ -13537,7 +13551,7 @@
               "type": "string"
             },
             "pane_id": {
-              "description": "The public pane id of the entry's agent, for opening it. Event entries only.",
+              "description": "The public pane id of the entry's agent, for opening it: event entries, a Gram an\nagent sent from its pane, and a post addressed by pane.",
               "type": [
                 "string",
                 "null"
@@ -13555,7 +13569,7 @@
               ]
             },
             "session": {
-              "description": "The herdr session that pane lives in, `default` for the unnamed one. Event\nentries only.",
+              "description": "The herdr session that pane lives in, `default` for the unnamed one. Set with\n`pane_id`.",
               "type": [
                 "string",
                 "null"

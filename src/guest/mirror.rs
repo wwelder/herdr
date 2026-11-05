@@ -364,6 +364,7 @@ mod tests {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         }
     }
 

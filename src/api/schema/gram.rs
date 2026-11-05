@@ -352,6 +352,10 @@ pub struct GramMessageInfo {
     /// Gram an agent sent from its pane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// Recap entries only: the owner's prompt that started the turn, when the transcript
+    /// shows one (a turn started by a background task's result has none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     /// Blocked entries only: true once the agent left the blocked state.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved: Option<bool>,

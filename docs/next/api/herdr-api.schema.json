@@ -13564,6 +13564,13 @@
                 "null"
               ]
             },
+            "prompt": {
+              "description": "Recap entries only: the owner's prompt that started the turn, when the transcript\nshows one (a turn started by a background task's result has none).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "read_by_owner": {
               "default": false,
               "type": "boolean"

@@ -175,6 +175,9 @@ pub struct GramItem {
     /// The agent's working directory when the entry was written.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
+    /// A recap's turn-starting prompt: what the owner typed to the agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     /// A blocked entry whose agent has moved on.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub resolved: bool,
@@ -559,6 +562,7 @@ mod tests {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         }
     }
 

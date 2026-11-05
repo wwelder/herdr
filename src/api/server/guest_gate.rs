@@ -1568,6 +1568,7 @@ fn mirror_relayed(
         resolved: false,
         source_key: None,
         cwd: None,
+        prompt: None,
     };
     let guests = crate::guest::store::load_store(dir).ok()?.guests;
     // Witnessed for any guest the Gram is meant for, sharing or not, so a
@@ -3735,6 +3736,7 @@ mod tests {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         })
         .unwrap();
         send_gram(&harness, "llm-opt", "the granted agent");

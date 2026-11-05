@@ -23,6 +23,8 @@ pub(crate) struct FinalReply {
     /// The harness has recorded the turn as finished. While false the text may
     /// be an interim message the turn's real reply has not followed yet.
     pub(crate) complete: bool,
+    /// The owner's prompt that started the turn, when one did.
+    pub(crate) prompt: Option<String>,
 }
 
 /// The current turn's final reply in a Claude Code transcript: the newest
@@ -32,7 +34,9 @@ pub(crate) struct FinalReply {
 pub(crate) fn claude(path: &Path) -> std::io::Result<Option<FinalReply>> {
     let tail = read_tail(path)?;
     let mut reply: Option<(String, String, Vec<String>)> = None;
+    let mut sealed = false;
     let mut complete = None;
+    let mut prompt = None;
     for record in records_newest_first(&tail) {
         if record["isSidechain"] == true || record["isMeta"] == true {
             continue;
@@ -41,6 +45,9 @@ pub(crate) fn claude(path: &Path) -> std::io::Result<Option<FinalReply>> {
         match record["type"].as_str() {
             Some("assistant") => {
                 complete.get_or_insert(message["stop_reason"] == "end_turn");
+                if sealed {
+                    continue;
+                }
                 let id = message["id"].as_str().unwrap_or_default();
                 let text = claude_text(&message["content"]);
                 match &mut reply {
@@ -53,7 +60,8 @@ pub(crate) fn claude(path: &Path) -> std::io::Result<Option<FinalReply>> {
                             texts.push(text);
                         }
                     }
-                    Some(_) => break,
+                    // An earlier message of the turn: the reply is whole; walk on to the prompt.
+                    Some(_) => sealed = true,
                     None => {}
                 }
             }
@@ -64,6 +72,7 @@ pub(crate) fn claude(path: &Path) -> std::io::Result<Option<FinalReply>> {
                 });
                 if !tool_result {
                     // The owner's prompt: the turn started here.
+                    prompt = claude_prompt(content);
                     break;
                 }
                 complete.get_or_insert(false);
@@ -77,6 +86,7 @@ pub(crate) fn claude(path: &Path) -> std::io::Result<Option<FinalReply>> {
             text: texts.join("\n\n"),
             key: format!("claude:{key}"),
             complete: complete.unwrap_or(false),
+            prompt,
         }
     }))
 }
@@ -101,6 +111,8 @@ pub(crate) fn codex(path: &Path) -> std::io::Result<Option<FinalReply>> {
                         text: text.to_owned(),
                         key: format!("codex:{turn}"),
                         complete: true,
+                        // ponytail: codex's prompt is not read; newer rollouts mix it with injected context.
+                        prompt: None,
                     }));
                 }
                 completed_turn = Some(turn);
@@ -127,12 +139,33 @@ pub(crate) fn codex(path: &Path) -> std::io::Result<Option<FinalReply>> {
                     text: text.to_owned(),
                     key: format!("codex:{key}"),
                     complete: completed_turn.is_some(),
+                    prompt: None,
                 }));
             }
             _ => {}
         }
     }
     Ok(None)
+}
+
+/// What the owner typed in a turn-starting user record: its text, or a slash command as
+/// `/name args`. None for what Claude Code wrote there itself (a background task's
+/// result, a local command's output, an interrupt notice).
+fn claude_prompt(content: &Value) -> Option<String> {
+    let text = claude_text(content);
+    if let Some(name) = tagged(&text, "command-name") {
+        let args = tagged(&text, "command-args").unwrap_or_default();
+        return Some(format!("{name} {args}").trim_end().to_owned());
+    }
+    (!text.is_empty() && !text.starts_with('<') && !text.starts_with("[Request interrupted"))
+        .then_some(text)
+}
+
+/// The trimmed text between `<name>` and `</name>`.
+fn tagged<'a>(text: &'a str, name: &str) -> Option<&'a str> {
+    let start = text.find(&format!("<{name}>"))? + name.len() + 2;
+    let end = start + text[start..].find(&format!("</{name}>"))?;
+    Some(text[start..end].trim())
 }
 
 /// The text blocks of one Claude message's content.
@@ -258,7 +291,40 @@ mod tests {
                 text: "Fixed the build.\n\nTests pass.".into(),
                 key: "claude:u5".into(),
                 complete: true,
+                prompt: Some("fix the build".into()),
             })
+        );
+    }
+
+    #[test]
+    fn a_claude_prompt_is_what_the_owner_typed() {
+        assert_eq!(
+            claude_prompt(&json!("fix the build")),
+            Some("fix the build".into())
+        );
+        assert_eq!(
+            claude_prompt(
+                &json!([{"type": "image"}, {"type": "text", "text": "[Image #1] this one"}])
+            ),
+            Some("[Image #1] this one".into())
+        );
+        assert_eq!(
+            claude_prompt(&json!("<command-message>loop</command-message>\n<command-name>/loop</command-name>\n<command-args>10m check</command-args>")),
+            Some("/loop 10m check".into())
+        );
+        assert_eq!(
+            claude_prompt(&json!(
+                "<command-name>/model</command-name>\n<command-args></command-args>"
+            )),
+            Some("/model".into())
+        );
+        assert_eq!(
+            claude_prompt(&json!("<task-notification>\n<task-id>b1</task-id>")),
+            None
+        );
+        assert_eq!(
+            claude_prompt(&json!([{"type": "text", "text": "[Request interrupted by user]"}])),
+            None
         );
     }
 
@@ -330,6 +396,7 @@ mod tests {
                 text: "Done: two icons.".into(),
                 key: "codex:t1".into(),
                 complete: true,
+                prompt: None,
             })
         );
     }

@@ -242,6 +242,7 @@ impl App {
                     resolved: false,
                     source_key: None,
                     cwd: None,
+                    prompt: None,
                 };
                 match crate::persist::gram::append(item.clone()) {
                     Ok(_) => {
@@ -396,6 +397,7 @@ impl App {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         };
         if let Some(place) = place {
             (item.pane_id, item.session, item.cwd) =
@@ -500,6 +502,7 @@ impl App {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         };
         if let Some(place) = place {
             (item.pane_id, item.session) = (Some(place.pane_id), Some(place.session));
@@ -1418,6 +1421,7 @@ fn gram_item_to_info(item: GramItem, labels: &MachineLabels) -> GramMessageInfo 
         pane_id: item.pane_id,
         session: item.session,
         cwd: item.cwd,
+        prompt: item.prompt,
     }
 }
 
@@ -1590,6 +1594,7 @@ mod tests {
             resolved: false,
             source_key: None,
             cwd: None,
+            prompt: None,
         }
     }
 

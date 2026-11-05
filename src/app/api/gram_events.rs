@@ -280,6 +280,7 @@ fn event_item(from: &str, pane_id: String, session: String) -> GramItem {
         resolved: false,
         source_key: None,
         cwd: None,
+        prompt: None,
     }
 }
 
@@ -292,24 +293,28 @@ fn clip(text: &str) -> String {
     }
 }
 
-/// The recap's text and the source it was read from. Each read that finds no
-/// finished turn yet waits the next of `pauses` and tries again; when they run
-/// out, the best text found stands, else the hook's report, else a fallback.
-fn recap_text(request: &RecapRequest, pauses: &[Duration]) -> (String, Option<String>) {
-    let read = |path: &std::path::Path| -> Option<(String, String, bool)> {
+/// The recap's text, the source it was read from and the owner's prompt for the
+/// turn. Each read that finds no finished turn yet waits the next of `pauses` and
+/// tries again; when they run out, the best text found stands, else the hook's
+/// report, else a fallback.
+fn recap_text(
+    request: &RecapRequest,
+    pauses: &[Duration],
+) -> (String, Option<String>, Option<String>) {
+    let read = |path: &std::path::Path| -> Option<(String, String, bool, Option<String>)> {
         match request.agent? {
             Agent::Omp => crate::agent_transcript::recap(path)
                 .ok()
                 .flatten()
-                .map(|recap| (recap.text, format!("omp:{}", recap.turn_id), true)),
+                .map(|recap| (recap.text, format!("omp:{}", recap.turn_id), true, None)),
             Agent::Claude => crate::agent_transcript::reply::claude(path)
                 .ok()
                 .flatten()
-                .map(|reply| (reply.text, reply.key, reply.complete)),
+                .map(|reply| (reply.text, reply.key, reply.complete, reply.prompt)),
             Agent::Codex => crate::agent_transcript::reply::codex(path)
                 .ok()
                 .flatten()
-                .map(|reply| (reply.text, reply.key, reply.complete)),
+                .map(|reply| (reply.text, reply.key, reply.complete, reply.prompt)),
             _ => None,
         }
     };
@@ -317,8 +322,8 @@ fn recap_text(request: &RecapRequest, pauses: &[Duration]) -> (String, Option<St
     if let Some(path) = request.session_file.as_deref() {
         let mut pauses = pauses.iter();
         loop {
-            if let Some((text, key, complete)) = read(path) {
-                best = Some((text, key));
+            if let Some((text, key, complete, prompt)) = read(path) {
+                best = Some((text, key, prompt));
                 if complete {
                     break;
                 }
@@ -330,7 +335,9 @@ fn recap_text(request: &RecapRequest, pauses: &[Duration]) -> (String, Option<St
         }
     }
     match best {
-        Some((text, key)) if !text.trim().is_empty() => (clip(&text), Some(key)),
+        Some((text, key, prompt)) if !text.trim().is_empty() => {
+            (clip(&text), Some(key), prompt.as_deref().map(clip))
+        }
         _ => (
             clip(
                 request
@@ -339,6 +346,7 @@ fn recap_text(request: &RecapRequest, pauses: &[Duration]) -> (String, Option<St
                     .filter(|text| !text.trim().is_empty())
                     .unwrap_or(FINISHED_TEXT),
             ),
+            None,
             None,
         ),
     }
@@ -359,10 +367,11 @@ fn dispatch(jobs: Vec<GramJob>) {
             GramJob::Event(event) => send(event),
             GramJob::Recap(request) => {
                 let spawned = crate::thread_spawn::spawn_named("herdr-gram-recap", move || {
-                    let (text, source_key) = recap_text(&request, &RECAP_READ_PAUSES);
+                    let (text, source_key, prompt) = recap_text(&request, &RECAP_READ_PAUSES);
                     let mut item = request.item;
                     item.text = text;
                     item.source_key = source_key;
+                    item.prompt = prompt;
                     send(GramEvent::Append(item));
                 });
                 if let Err(err) = spawned {
@@ -751,7 +760,11 @@ mod tests {
         );
         assert_eq!(
             recap_text(&request(Some(Agent::Claude), Some(path)), &[]),
-            ("All green.".to_string(), Some("claude:u1".to_string()))
+            (
+                "All green.".to_string(),
+                Some("claude:u1".to_string()),
+                Some("go".to_string())
+            )
         );
     }
 
@@ -764,7 +777,7 @@ mod tests {
                 serde_json::json!({"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t9", "last_agent_message": reply}}),
             ],
         );
-        let (text, key) = recap_text(&request(Some(Agent::Codex), Some(path)), &[]);
+        let (text, key, _) = recap_text(&request(Some(Agent::Codex), Some(path)), &[]);
         assert_eq!(text.chars().count(), MAX_TEXT_CHARS + 1);
         assert_eq!(key.as_deref(), Some("codex:t9"));
     }
@@ -773,18 +786,18 @@ mod tests {
     fn an_unreadable_turn_still_gets_a_recap() {
         assert_eq!(
             recap_text(&request(Some(Agent::Claude), None), &[]),
-            (FINISHED_TEXT.to_string(), None)
+            (FINISHED_TEXT.to_string(), None, None)
         );
         let missing = std::env::temp_dir().join("herdr-gram-recap-missing/session.jsonl");
         assert_eq!(
             recap_text(&request(Some(Agent::Codex), Some(missing)), &[]),
-            (FINISHED_TEXT.to_string(), None)
+            (FINISHED_TEXT.to_string(), None, None)
         );
         let mut reported = request(Some(Agent::Pi), None);
         reported.reported = Some("Shipped it.".into());
         assert_eq!(
             recap_text(&reported, &[]),
-            ("Shipped it.".to_string(), None)
+            ("Shipped it.".to_string(), None, None)
         );
     }
 }

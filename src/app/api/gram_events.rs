@@ -27,8 +27,9 @@ const WAITING_TEXT: &str = "Waiting for your answer";
 /// A recap's text when no reply can be read for the turn.
 const FINISHED_TEXT: &str = "Finished a turn";
 const DIED_TEXT: &str = "Process exited";
-/// Longest entry text, in characters: a recap is a glance, not the transcript.
-const MAX_TEXT_CHARS: usize = 800;
+/// Longest entry text, in characters. HerdrUp shows a recap whole, so this only stops a
+/// runaway reply from bloating the store.
+const MAX_TEXT_CHARS: usize = 6000;
 /// Waits between reads of a just-finished turn's transcript. The harness may
 /// flush the reply a moment after its screen goes idle, and omp writes its
 /// recap after the turn.
@@ -770,7 +771,7 @@ mod tests {
 
     #[test]
     fn a_codex_recap_is_its_last_agent_message_clipped() {
-        let reply = "x".repeat(2000);
+        let reply = "x".repeat(MAX_TEXT_CHARS + 1000);
         let path = session_file(
             "codex",
             &[

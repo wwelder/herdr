@@ -2957,6 +2957,34 @@
           ],
           "type": "object"
         },
+        "FeedActParams": {
+          "description": "Parameters for `feed.act` — the owner answers card `id` of `source`: one of the\ncard's `actions` by id, and/or `text` when the card takes `input`.",
+          "properties": {
+            "action": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "source",
+            "id"
+          ],
+          "type": "object"
+        },
         "FsListDirParams": {
           "description": "Parameters for `fs.list_dir` — list a single directory's entries, for an app\nfolder picker. `path` is absolute; a leading `~` is expanded and `None`\ndefaults to `$HOME`. Read-only; never writes or traverses recursively.",
           "properties": {
@@ -7829,6 +7857,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/EmptyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "feed.act",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/FeedActParams"
             }
           },
           "required": [
@@ -13360,27 +13404,37 @@
           ],
           "type": "string"
         },
-        "FeedFileInfo": {
-          "description": "One feed file returned by `feed.list`: an RSS or Atom document a script wrote to\nthe `feeds` folder of herdr's config directory. `name` is the file name. `xml` is\nits text, unparsed, or absent with an `error` when the file can't be served.",
+        "FeedCardInfo": {
+          "description": "One card returned by `feed.list`: `<config>/feeds/<source>/<id>.json`, a JSON\nobject a script wrote for HerdrUp's feed. `card` is the file's text, unparsed,\nor absent with an `error` when it can't be served. `reply` is the text of the\nowner's answer (`<id>.reply.json`, written by `feed.act`), when there is one.",
           "properties": {
+            "card": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "error": {
               "type": [
                 "string",
                 "null"
               ]
             },
-            "name": {
+            "id": {
               "type": "string"
             },
-            "xml": {
+            "reply": {
               "type": [
                 "string",
                 "null"
               ]
+            },
+            "source": {
+              "type": "string"
             }
           },
           "required": [
-            "name"
+            "source",
+            "id"
           ],
           "type": "object"
         },
@@ -16605,9 +16659,9 @@
             },
             {
               "properties": {
-                "feeds": {
+                "cards": {
                   "items": {
-                    "$ref": "#/schemas/success_response/$defs/FeedFileInfo"
+                    "$ref": "#/schemas/success_response/$defs/FeedCardInfo"
                   },
                   "type": "array"
                 },
@@ -16618,7 +16672,26 @@
               },
               "required": [
                 "type",
-                "feeds"
+                "cards"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "output": {
+                  "description": "What the source's `on-reply` handler printed, trimmed, if it ran.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "type": {
+                  "const": "feed_act",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type"
               ],
               "type": "object"
             },

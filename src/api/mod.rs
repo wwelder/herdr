@@ -5,6 +5,7 @@ pub(crate) mod federation;
 pub mod federation_manager;
 mod federation_relay;
 pub mod federation_store;
+pub(crate) mod feed;
 #[cfg(unix)]
 pub(crate) mod gram_gateway;
 pub(crate) mod gram_relay;

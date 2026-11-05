@@ -1834,6 +1834,10 @@ fn handle_principal_connection(
             let response = answer_agent(request_id.clone(), params, api_tx);
             finish_wait_response(&mut stream, Some(response), &request_id, method, changes_ui)
         }
+        Method::FeedAct(params) => {
+            let response = crate::api::feed::act_response(request_id.clone(), &params);
+            finish_wait_response(&mut stream, Some(response), &request_id, method, changes_ui)
+        }
         Method::PaneWaitForOutput(params) => {
             let response =
                 wait_for_output(request_id.clone(), params, &mut stream, api_tx, running)?;
@@ -5068,6 +5072,7 @@ mod federation_tests {
             ("fs.list_dir", Denied),
             // The owner's private summaries.
             ("feed.list", Denied),
+            ("feed.act", Denied),
             ("agent.prompt", AllowedAt(Interact)),
             ("agent.wait", AllowedAt(Observe)),
             ("agent.answer", AllowedAt(Admin)),

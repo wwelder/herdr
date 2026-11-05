@@ -2,75 +2,75 @@
   "schema_version": 2,
   "channel": "preview",
   "base_version": "0.9.5",
-  "build_id": "2026-11-04-19a018fe5c6d",
-  "commit": "19a018fe5c6dd60bad4bceeb715fa904ef385ca0",
-  "commit_time": 1793833691,
-  "built_at": "2026-11-04T23:21:00Z",
+  "build_id": "2026-11-04-2732613496f3",
+  "commit": "2732613496f3acc5ca3e4f3d613fdcb9e296c679",
+  "commit_time": 1793841943,
+  "built_at": "2026-11-05T01:36:58Z",
   "protocol": 22,
   "endpoint_generation": 1,
-  "notes": "Herdr fork preview (wwelder/herdr): gram is the owner's inbox\n\nSource: 19a018fe5c6dd60bad4bceeb715fa904ef385ca0.\n\n- Gram now collects what needs the owner, with `kind`, `pane_id`, `session` and `resolved` on each entry:\n  - `blocked`: an agent's question. It is resolved in place once the agent moves on, its pane exits, or the pane is closed.\n  - `recap`: the agent's final reply at the end of each turn. For Claude it is read from the transcript, which is found by session id when the server took over without seeing the agent start.\n  - `died`: the agent's pane died.\n  These entries are owner-only and never push on their own. At the store cap they are evicted before real messages.\n- `codex exec` runs are subagents. `agent.list` and `agent.get` mark them with `subagent: true`. They are hidden from the agent panel, pushes, toasts and Live Activity, and they get no gram entries.\n- A `--critical` gram now reaches devices that have gram alerts off.\n\nAll five assets were built by the manual Build artifacts workflow (run 41931250898).\n\nUpdate with `herdr update` on the preview channel.",
+  "notes": "Herdr fork preview (wwelder/herdr): gram entries name the task and folder, and posts reach any pane\n\nSource: 2732613496f3acc5ca3e4f3d613fdcb9e296c679.\n\n- herdr's gram entries (blocked, recap, died) are named after the pane's title (the task, such as \"Assistant feature\") instead of the agent kind, and carry the agent's working directory as `cwd`. A status title such as codex's \"Action Required\" falls back to the agent's name.\n- A Gram an agent sends from its pane carries that pane's `pane_id`, `session` and `cwd`, so HerdrUp files it under the agent with its other entries.\n- `gram.post` takes `pane_id` to address the agent in that pane of the session instead of by name, so agents with no name can be written to as well. A pane-addressed post is visible only to that session's pane, since pane ids repeat across sessions.\n\nAll five assets were built by the manual Build artifacts workflow (run 41948461358).\n\nUpdate with `herdr update` on the preview channel.",
   "assets": {
     "linux-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-linux-x86_64",
-      "sha256": "5dd34fe206b2250c2e3b18dbced828acfdfffcb1a8602f51c7f69cc01a742f92",
-      "size": 43870280
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-linux-x86_64",
+      "sha256": "1acefea812247f02f52cc15d49d9c1d4739f2c184b51d8485eff9c2ffd52ad24",
+      "size": 43978304
     },
     "linux-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-linux-aarch64",
-      "sha256": "116cf2b9bdde706503c002bf985e08bee5333e94d65084a37921753cb1ae6784",
-      "size": 40353816
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-linux-aarch64",
+      "sha256": "5cb30762861dc3eabc66454e1961ff0c3df638bbe721a7a7746bc6ab4ffc3288",
+      "size": 40291488
     },
     "macos-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-macos-x86_64",
-      "sha256": "40acaea6075f7e6917387cb38bd4b41b5a5d3ef282d51746d0eab475d1e33501",
-      "size": 37050424
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-macos-x86_64",
+      "sha256": "b87ed05acc891d34acd2d430f46f13f9f890cd71767f8fe08b8d42f7cf2310a6",
+      "size": 37247248
     },
     "macos-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-macos-aarch64",
-      "sha256": "819b26dd092dee7780545a7d97924c08e5d51068e94b646cf0c648e495054f2a",
-      "size": 34339232
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-macos-aarch64",
+      "sha256": "1e033b37700da4fb9b39280afe8bf0c49b302b1bea5bdc4b2f9dc10c80bfad17",
+      "size": 34109120
     },
     "windows-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-windows-x86_64.zip",
-      "sha256": "d63844a7d3c0c8572d70f0ca87453d39e3b23d0a3768e2c1ff38aaef8ac60642",
-      "size": 13624046,
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-windows-x86_64.zip",
+      "sha256": "a47bedd13e641fada25b1b0cc5a47635b75a3e7636ae340c97829a283c797bd5",
+      "size": 13624148,
       "format": "zip"
     }
   },
   "builds": {
-    "2026-11-04-19a018fe5c6d": {
+    "2026-11-04-2732613496f3": {
       "base_version": "0.9.5",
-      "commit": "19a018fe5c6dd60bad4bceeb715fa904ef385ca0",
-      "commit_time": 1793833691,
-      "built_at": "2026-11-04T23:21:00Z",
+      "commit": "2732613496f3acc5ca3e4f3d613fdcb9e296c679",
+      "commit_time": 1793841943,
+      "built_at": "2026-11-05T01:36:58Z",
       "protocol": 22,
       "endpoint_generation": 1,
-      "tag": "preview-2026-11-04-19a018fe5c6d",
+      "tag": "preview-2026-11-04-2732613496f3",
       "assets": {
         "linux-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-linux-x86_64",
-          "sha256": "5dd34fe206b2250c2e3b18dbced828acfdfffcb1a8602f51c7f69cc01a742f92",
-          "size": 43870280
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-linux-x86_64",
+          "sha256": "1acefea812247f02f52cc15d49d9c1d4739f2c184b51d8485eff9c2ffd52ad24",
+          "size": 43978304
         },
         "linux-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-linux-aarch64",
-          "sha256": "116cf2b9bdde706503c002bf985e08bee5333e94d65084a37921753cb1ae6784",
-          "size": 40353816
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-linux-aarch64",
+          "sha256": "5cb30762861dc3eabc66454e1961ff0c3df638bbe721a7a7746bc6ab4ffc3288",
+          "size": 40291488
         },
         "macos-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-macos-x86_64",
-          "sha256": "40acaea6075f7e6917387cb38bd4b41b5a5d3ef282d51746d0eab475d1e33501",
-          "size": 37050424
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-macos-x86_64",
+          "sha256": "b87ed05acc891d34acd2d430f46f13f9f890cd71767f8fe08b8d42f7cf2310a6",
+          "size": 37247248
         },
         "macos-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-macos-aarch64",
-          "sha256": "819b26dd092dee7780545a7d97924c08e5d51068e94b646cf0c648e495054f2a",
-          "size": 34339232
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-macos-aarch64",
+          "sha256": "1e033b37700da4fb9b39280afe8bf0c49b302b1bea5bdc4b2f9dc10c80bfad17",
+          "size": 34109120
         },
         "windows-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-19a018fe5c6d/herdr-windows-x86_64.zip",
-          "sha256": "d63844a7d3c0c8572d70f0ca87453d39e3b23d0a3768e2c1ff38aaef8ac60642",
-          "size": 13624046,
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-04-2732613496f3/herdr-windows-x86_64.zip",
+          "sha256": "a47bedd13e641fada25b1b0cc5a47635b75a3e7636ae340c97829a283c797bd5",
+          "size": 13624148,
           "format": "zip"
         }
       }

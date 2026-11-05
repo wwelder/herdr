@@ -1778,6 +1778,13 @@ impl App {
             }
             Method::AgentKinds(_) => return self.handle_agent_kinds(request.id),
             Method::FsListDir(params) => return self.handle_fs_list_dir(request.id, params),
+            Method::FeedList(_) => {
+                let feeds = read_feeds(&crate::config::config_dir().join("feeds"));
+                return responses::encode_success(
+                    request.id,
+                    crate::api::schema::ResponseResult::FeedList { feeds },
+                );
+            }
             Method::AgentPrompt(_) => {
                 return responses::encode_error(
                     request.id,
@@ -2360,6 +2367,54 @@ fn resolve_list_dir_path(path: Option<&str>) -> std::path::PathBuf {
             None => std::path::PathBuf::from(raw),
         },
     }
+}
+
+/// A feed file is served whole, up to this size; a larger one is listed with an error.
+const FEED_MAX_BYTES: u64 = 512 * 1024;
+/// At most this many feed files, by name.
+const FEED_MAX_FILES: usize = 64;
+
+/// `feed.list` — the RSS and Atom files scripts wrote to `dir` (`<config>/feeds`), for
+/// HerdrUp's feed. Read-only and unparsed: the app parses them. Only `*.xml` counts, so a
+/// script that writes `.name.xml.tmp` and renames it over the feed is never read half
+/// written. A missing folder is an empty list.
+fn read_feeds(dir: &std::path::Path) -> Vec<crate::api::schema::FeedFileInfo> {
+    let Ok(read_dir) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = read_dir
+        .flatten()
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .filter(|name| !name.starts_with('.') && name.ends_with(".xml"))
+        .collect();
+    names.sort();
+    names.truncate(FEED_MAX_FILES);
+    names
+        .into_iter()
+        .map(|name| {
+            let path = dir.join(&name);
+            let xml = match std::fs::metadata(&path) {
+                Ok(meta) if !meta.is_file() => Err("not a file".to_owned()),
+                Ok(meta) if meta.len() > FEED_MAX_BYTES => {
+                    Err(format!("larger than {} KiB", FEED_MAX_BYTES / 1024))
+                }
+                Ok(_) => std::fs::read_to_string(&path).map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            };
+            match xml {
+                Ok(xml) => crate::api::schema::FeedFileInfo {
+                    name,
+                    xml: Some(xml),
+                    error: None,
+                },
+                Err(error) => crate::api::schema::FeedFileInfo {
+                    name,
+                    xml: None,
+                    error: Some(error),
+                },
+            }
+        })
+        .collect()
 }
 
 /// Whether `exe` names an executable file in any `$PATH` directory. Unix-focused:
@@ -3089,6 +3144,27 @@ mod tests {
             std::fs::canonicalize(value["result"]["path"].as_str().unwrap()).unwrap(),
             std::fs::canonicalize(&dir).unwrap()
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_feeds_serves_xml_files_and_flags_oversized_ones() {
+        let dir = std::env::temp_dir().join(format!("herdr-feeds-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("oura.xml"), "<rss/>").unwrap();
+        std::fs::write(dir.join(".oura.xml.tmp"), "<rss>").unwrap();
+        std::fs::write(dir.join("notes.txt"), "x").unwrap();
+        std::fs::write(dir.join("big.xml"), vec![b' '; FEED_MAX_BYTES as usize + 1]).unwrap();
+
+        let feeds = read_feeds(&dir);
+        let names: Vec<&str> = feeds.iter().map(|feed| feed.name.as_str()).collect();
+        assert_eq!(names, vec!["big.xml", "oura.xml"]);
+        assert_eq!(feeds[0].xml, None);
+        assert_eq!(feeds[0].error.as_deref(), Some("larger than 512 KiB"));
+        assert_eq!(feeds[1].xml.as_deref(), Some("<rss/>"));
+        assert!(read_feeds(&dir.join("missing")).is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

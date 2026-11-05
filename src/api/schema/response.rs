@@ -162,6 +162,9 @@ pub enum ResponseResult {
         path: String,
         entries: Vec<DirEntryInfo>,
     },
+    FeedList {
+        feeds: Vec<FeedFileInfo>,
+    },
     AgentView {
         active: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -564,6 +567,18 @@ pub struct AgentKindInfo {
 pub struct DirEntryInfo {
     pub name: String,
     pub is_dir: bool,
+}
+
+/// One feed file returned by `feed.list`: an RSS or Atom document a script wrote to
+/// the `feeds` folder of herdr's config directory. `name` is the file name. `xml` is
+/// its text, unparsed, or absent with an `error` when the file can't be served.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct FeedFileInfo {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xml: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

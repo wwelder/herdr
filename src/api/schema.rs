@@ -156,6 +156,7 @@ operations::define_operations! {
     AccountsRemove(AccountsRemoveParams) => "accounts.remove", false, false;
     AgentKinds(EmptyParams) => "agent.kinds", false, false;
     FsListDir(FsListDirParams) => "fs.list_dir", false, false;
+    FeedList(EmptyParams) => "feed.list", false, false;
     PaneSplit(PaneSplitParams) => "pane.split", true, true;
     PaneSwap(PaneSwapParams) => "pane.swap", true, true;
     PaneMove(PaneMoveParams) => "pane.move", true, false;

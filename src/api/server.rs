@@ -5066,6 +5066,8 @@ mod federation_tests {
             ("accounts.remove", Denied),
             ("agent.kinds", AllowedAt(Observe)),
             ("fs.list_dir", Denied),
+            // The owner's private summaries.
+            ("feed.list", Denied),
             ("agent.prompt", AllowedAt(Interact)),
             ("agent.wait", AllowedAt(Observe)),
             ("agent.answer", AllowedAt(Admin)),

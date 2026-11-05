@@ -7824,6 +7824,22 @@
         {
           "properties": {
             "method": {
+              "const": "feed.list",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/EmptyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
               "const": "pane.split",
               "type": "string"
             },
@@ -13344,6 +13360,30 @@
           ],
           "type": "string"
         },
+        "FeedFileInfo": {
+          "description": "One feed file returned by `feed.list`: an RSS or Atom document a script wrote to\nthe `feeds` folder of herdr's config directory. `name` is the file name. `xml` is\nits text, unparsed, or absent with an `error` when the file can't be served.",
+          "properties": {
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "xml": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "type": "object"
+        },
         "GramDirection": {
           "description": "Direction of a gram message on the wire. Mirrors\n[`crate::persist::gram::GramDirection`]; the handler maps between them so the\nstorage record and the public contract can evolve independently.",
           "enum": [
@@ -16560,6 +16600,25 @@
                 "type",
                 "path",
                 "entries"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "feeds": {
+                  "items": {
+                    "$ref": "#/schemas/success_response/$defs/FeedFileInfo"
+                  },
+                  "type": "array"
+                },
+                "type": {
+                  "const": "feed_list",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "feeds"
               ],
               "type": "object"
             },

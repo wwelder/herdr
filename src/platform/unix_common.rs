@@ -390,6 +390,22 @@ pub(crate) fn local_stream_peer_description(stream: &crate::ipc::LocalStream) ->
     Some(description)
 }
 
+/// The process on the other end of a local socket, then its parent, grandparent and on
+/// up (init excluded, at most 64). The kernel reports the first, so a client can't
+/// claim someone else's.
+pub(crate) fn local_stream_peer_lineage(stream: &crate::ipc::LocalStream) -> Vec<u32> {
+    use std::os::fd::{AsFd as _, AsRawFd as _};
+
+    let crate::ipc::LocalStream::UdSocket(socket) = stream;
+    let mut lineage = Vec::new();
+    let mut next = super::socket_peer_pid(socket.as_fd().as_raw_fd());
+    while let Some(pid) = next.filter(|pid| *pid > 1 && lineage.len() < 64) {
+        lineage.push(pid);
+        next = super::process_name_and_parent(pid).map(|(_, parent)| parent);
+    }
+    lineage
+}
+
 pub(crate) fn begin_cli_output() {
     set_sigpipe_disposition(libc::SIG_DFL);
 }

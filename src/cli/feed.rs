@@ -35,6 +35,7 @@ pub(super) fn run_feed_command(args: &[String]) -> std::io::Result<i32> {
             card,
             source,
             caller_pane_id: super::gram::env_pane_id(),
+            caller_pids: Vec::new(),
         }),
     })?)
 }

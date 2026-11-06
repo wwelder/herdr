@@ -1843,7 +1843,13 @@ fn handle_principal_connection(
                 wait_for_output(request_id.clone(), params, &mut stream, api_tx, running)?;
             finish_wait_response(&mut stream, response, &request_id, method, changes_ui)
         }
-        method_body => {
+        mut method_body => {
+            if let Method::FeedAsk(params) = &mut method_body {
+                params.caller_pids = match &stream {
+                    ApiStream::Local(local) => crate::platform::local_stream_peer_lineage(local),
+                    _ => Vec::new(),
+                };
+            }
             let (response_write_tx, response_write_rx) = std::sync::mpsc::channel();
             // Only the local socket names a process peer; federation and guest
             // connections cannot reach `server.stop` past their gates anyway.

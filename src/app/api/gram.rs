@@ -1062,6 +1062,13 @@ impl App {
         })
     }
 
+    /// The process a pane runs (its shell, or the command it was opened with).
+    fn pane_process(&self, pane: &str) -> Option<u32> {
+        let (ws_idx, pane_id) = self.parse_pane_id(pane)?;
+        let terminal_id = self.state.workspaces.get(ws_idx)?.terminal_id(pane_id)?;
+        self.terminal_runtimes.get(terminal_id)?.child_pid()
+    }
+
     /// The terminal and agent kind behind a caller pane, recorded on the Gram
     /// it sends so a guest's view follows the agent, not a reusable name.
     fn caller_sender(&self, caller_pane_id: &str) -> Option<crate::persist::gram::GramSender> {
@@ -1136,7 +1143,23 @@ impl App {
         id: String,
         params: crate::api::schema::FeedAskParams,
     ) -> String {
-        let caller = params.caller_pane_id.as_deref();
+        let claimed = params.caller_pane_id.as_deref();
+        let caller = claimed.filter(|pane| {
+            self.pane_process(pane)
+                .is_some_and(|pid| params.caller_pids.contains(&pid))
+        });
+        if let (Some(pane), None) = (claimed, caller) {
+            return encode_error(
+                id,
+                "feed_caller_unverified",
+                format!(
+                    "this command doesn't run inside pane {pane}, so the answer couldn't come \
+                     back to you. HERDR_PANE_ID is stale under a shared agent server such as \
+                     Codex's app-server daemon (start Codex with --no-daemon); ask with \
+                     herdr gram send instead"
+                ),
+            );
+        }
         let agent = self.resolve_sender(None, caller);
         let asker = caller.and_then(|pane| self.gram_pane_place(pane)).map(|place| {
             serde_json::json!({"session": place.session, "pane_id": place.pane_id, "agent": agent})

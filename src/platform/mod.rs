@@ -192,6 +192,11 @@ pub(crate) fn local_stream_peer_description(_stream: &crate::ipc::LocalStream) -
     None
 }
 
+#[cfg(not(unix))]
+pub(crate) fn local_stream_peer_lineage(_stream: &crate::ipc::LocalStream) -> Vec<u32> {
+    Vec::new()
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
     Hangup,
@@ -599,7 +604,8 @@ pub(crate) mod unix_image_files;
 #[cfg(unix)]
 pub(crate) use unix_common::{
     begin_cli_output, end_cli_output, forward_remote_bridge_stdio, ignore_server_hangup,
-    local_stream_peer_description, spawn_server_signal_monitor, ChildPipe, RemoteBridgeWake,
+    local_stream_peer_description, local_stream_peer_lineage, spawn_server_signal_monitor,
+    ChildPipe, RemoteBridgeWake,
 };
 
 mod client_state;

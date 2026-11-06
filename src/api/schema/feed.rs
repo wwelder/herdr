@@ -28,6 +28,11 @@ pub struct FeedAskParams {
     pub source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_pane_id: Option<String>,
+    /// Set by the server, never the client: the calling process and its ancestors. The
+    /// answer goes back to `caller_pane_id` only if that pane's process is among them,
+    /// since an agent harness can run commands with another pane's environment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub caller_pids: Vec<u32>,
 }
 
 /// Parameters for `feed.act` — the owner answers card `id` of `source`: one of the

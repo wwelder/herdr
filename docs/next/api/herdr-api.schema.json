@@ -2994,6 +2994,15 @@
                 "null"
               ]
             },
+            "caller_pids": {
+              "description": "Set by the server, never the client: the calling process and its ancestors. The\nanswer goes back to `caller_pane_id` only if that pane's process is among them,\nsince an agent harness can run commands with another pane's environment.",
+              "items": {
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": "array"
+            },
             "card": true,
             "source": {
               "type": [

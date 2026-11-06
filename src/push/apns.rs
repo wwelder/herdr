@@ -64,9 +64,9 @@ fn payload_body_in(notification: &PushNotification, session: &str) -> String {
         "workspace_id": notification.workspace_id,
         "session": session,
     });
-    // A gram alert deep-links to the app's Gram page, not a pane. The `gram`
-    // marker lets the client branch on tap; `pane_id`/`workspace_id` are empty
-    // for these and must be ignored when `gram` is present. An agent alert names
+    // A gram alert carries the `gram` marker; its `pane_id` names the local
+    // agent that sent it (empty for a relayed one), and a tap opens that agent.
+    // An agent alert names
     // its kind, agent and question top-level, and is mutable so the notification
     // service extension can hand them to the home-screen widgets.
     let kind = match notification.kind {

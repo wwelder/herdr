@@ -1,10 +1,12 @@
-//! `agent.transcript`: resolve the agent's omp session file on the app thread,
+//! `agent.transcript`: resolve the agent's session file (omp, Claude Code or
+//! Codex) on the app thread,
 //! then read and page it on a worker thread, since a cold index of a long
 //! session scans a file of over a hundred megabytes.
 
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
+use crate::agent_transcript::harness::Harness;
 use crate::agent_transcript::{self, PageRequest};
 use crate::api::schema::{AgentTranscriptParams, ErrorBody, Method, Request, ResponseResult};
 use crate::app::App;
@@ -15,15 +17,17 @@ use super::responses::{encode_error, encode_error_body, encode_success};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TranscriptSource {
     pub(crate) path: PathBuf,
+    /// None for omp, whose tree format has its own reader.
+    pub(crate) harness: Option<Harness>,
     pub(crate) agent: String,
     pub(crate) pane_id: String,
 }
 
 impl App {
-    /// The omp session file behind `target` (an agent name or pane id, as
+    /// The session file behind `target` (an agent name or pane id, as
     /// `agent.read` resolves it). Errors are `agent_not_found` (and the other
     /// target errors) or `transcript_unsupported` for an agent that is not
-    /// omp or has not reported its session file.
+    /// omp, Claude Code or Codex, or has not reported its session file.
     pub(crate) fn agent_transcript_source(
         &self,
         target: &str,
@@ -46,25 +50,28 @@ impl App {
             .and_then(|workspace| workspace.terminal_id(resolved.pane_id))
             .and_then(|terminal_id| self.state.terminals.get(terminal_id))
             .ok_or_else(not_found)?;
-        let Some((source, agent, session_ref)) = Self::terminal_resume_source(terminal) else {
+        let Some((_, agent, _)) = Self::terminal_resume_source(terminal) else {
             return Err(unsupported("the agent has not reported a session file"));
         };
-        if crate::detect::parse_agent_label(&agent) != Some(crate::detect::Agent::Omp) {
-            return Err(unsupported("transcripts are read from omp agents only"));
-        }
-        let path = terminal
-            .reported_agent_session_path_for(&source, &agent, &session_ref)
-            .map(PathBuf::from)
-            .or_else(|| {
-                (session_ref.kind == crate::agent_resume::AgentSessionRefKind::Path)
-                    .then(|| PathBuf::from(&session_ref.value))
-            })
+        let harness = match crate::detect::parse_agent_label(&agent) {
+            Some(crate::detect::Agent::Omp) => None,
+            Some(crate::detect::Agent::Claude) => Some(Harness::Claude),
+            Some(crate::detect::Agent::Codex) => Some(Harness::Codex),
+            _ => {
+                return Err(unsupported(
+                    "transcripts are read from omp, Claude Code and Codex agents only",
+                ))
+            }
+        };
+        let path = self
+            .agent_session_file(terminal)
             .ok_or_else(|| unsupported("the agent has not reported a session file"))?;
         let info = self
             .agent_info(resolved.ws_idx, resolved.pane_id)
             .ok_or_else(not_found)?;
         Ok(TranscriptSource {
             path,
+            harness,
             agent: info.name.clone().unwrap_or_else(|| agent.clone()),
             pane_id: info.pane_id,
         })
@@ -116,7 +123,11 @@ fn transcript_response(
         limit: params.limit,
         subagent: params.subagent,
     };
-    match agent_transcript::read_page(&source.path, &request) {
+    let page = match source.harness {
+        None => agent_transcript::read_page(&source.path, &request),
+        Some(harness) => agent_transcript::harness::read_page(&source.path, harness, &request),
+    };
+    match page {
         Ok(page) => encode_success(
             id,
             ResponseResult::AgentTranscript {

@@ -192,8 +192,8 @@ fn device_wants(device: &RegisteredDevice, kind: PushKind) -> bool {
 }
 
 /// True when the owner has muted this notification's pane on this device.
-/// A blank `pane_id` (gram pushes carry none) is never muted, so gram alerts
-/// are unaffected by per-agent mutes.
+/// A blank `pane_id` (a relayed gram) is never muted; a local agent's gram
+/// names its pane, so muting the agent mutes its grams too.
 fn device_muted(device: &RegisteredDevice, pane_id: &str) -> bool {
     !pane_id.is_empty() && device.muted_panes.iter().any(|muted| muted == pane_id)
 }

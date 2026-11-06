@@ -1254,8 +1254,8 @@ fn sender_machine_label<'a>(item: &GramItem, labels: &'a MachineLabels) -> Optio
     labels.get(alias).map(String::as_str)
 }
 
-/// The alert for a new Gram to the owner. It deep-links to the app's Gram
-/// page, so it carries no pane or workspace id. A Gram from a labeled
+/// The alert for a new Gram to the owner. It names the sending agent's pane
+/// when that agent is local, so a tap opens it. A Gram from a labeled
 /// federated machine names it the way remote agent alerts do:
 /// "llm-opt on Jerry's Mac Studio".
 pub(crate) fn gram_push_notification(
@@ -1289,7 +1289,7 @@ pub(crate) fn gram_push_notification(
     crate::push::PushNotification {
         title,
         body,
-        pane_id: String::new(),
+        pane_id: item.pane_id.clone().unwrap_or_default(),
         workspace_id: String::new(),
         kind: crate::push::PushKind::Gram,
         agent: String::new(),

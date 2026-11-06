@@ -151,7 +151,7 @@ pub(crate) fn codex(path: &Path) -> std::io::Result<Option<FinalReply>> {
 /// What the owner typed in a turn-starting user record: its text, or a slash command as
 /// `/name args`. None for what Claude Code wrote there itself (a background task's
 /// result, a local command's output, an interrupt notice).
-fn claude_prompt(content: &Value) -> Option<String> {
+pub(super) fn claude_prompt(content: &Value) -> Option<String> {
     let text = claude_text(content);
     if let Some(name) = tagged(&text, "command-name") {
         let args = tagged(&text, "command-args").unwrap_or_default();
@@ -169,7 +169,7 @@ fn tagged<'a>(text: &'a str, name: &str) -> Option<&'a str> {
 }
 
 /// The text blocks of one Claude message's content.
-fn claude_text(content: &Value) -> String {
+pub(super) fn claude_text(content: &Value) -> String {
     match content {
         Value::String(text) => text.trim().to_owned(),
         Value::Array(blocks) => blocks

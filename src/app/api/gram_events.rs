@@ -226,14 +226,42 @@ impl App {
                     .then(|| PathBuf::from(&session_ref.value))
             })
             .or_else(|| {
-                // Claude reports its transcript path only at SessionStart, which a server
-                // that took over by live handoff or restart never saw: find it by id.
-                // ponytail: Claude only; codex's dated rollout tree is not searched.
-                (agent == "claude"
-                    && session_ref.kind == crate::agent_resume::AgentSessionRefKind::Id)
-                    .then(|| self.find_claude_transcript(&session_ref.value))
-                    .flatten()
+                // Claude and Codex report their transcript path only at session start, which
+                // a server that took over by live handoff or restart never saw: find it by id.
+                if session_ref.kind != crate::agent_resume::AgentSessionRefKind::Id {
+                    return None;
+                }
+                match agent.as_str() {
+                    "claude" => self.find_claude_transcript(&session_ref.value),
+                    "codex" => self.find_codex_rollout(&session_ref.value),
+                    _ => None,
+                }
             })
+    }
+
+    /// The Codex rollout of thread `id` under the default Codex home or any configured
+    /// Codex account's. A found path is remembered: the dated tree is large to scan.
+    fn find_codex_rollout(&self, id: &str) -> Option<PathBuf> {
+        static FOUND: std::sync::LazyLock<
+            std::sync::Mutex<std::collections::HashMap<String, PathBuf>>,
+        > = std::sync::LazyLock::new(Default::default);
+        let mut found = FOUND
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(path) = found.get(id).filter(|path| path.is_file()) {
+            return Some(path.clone());
+        }
+        let path = crate::config::default_config_dir("codex")
+            .into_iter()
+            .chain(
+                self.loaded_accounts
+                    .iter()
+                    .filter(|account| account.kind == "codex")
+                    .map(|account| PathBuf::from(&account.config_dir)),
+            )
+            .find_map(|home| crate::session_transfer::find_codex_rollout(&home, id).ok())?;
+        found.insert(id.to_owned(), path.clone());
+        Some(path)
     }
 
     /// `<config home>/projects/*/<id>.jsonl` under the default Claude config home or

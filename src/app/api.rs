@@ -1194,6 +1194,7 @@ impl App {
                 }),
                 ask_source: push_ask_source(push_kind, agent_label, terminal, agent_display),
                 ask: None,
+                feed: None,
             });
         }
 
@@ -1640,6 +1641,7 @@ impl App {
             }
             Method::NotificationsStatus(_) => return self.handle_notifications_status(request.id),
             Method::GramSend(params) => return self.handle_gram_send(request.id, params),
+            Method::FeedAsk(params) => return self.handle_feed_ask(request.id, params),
             Method::GramPost(params) => return self.handle_gram_post(request.id, params),
             Method::GramList(params) => return self.handle_gram_list(request.id, params),
             Method::GramGrab(params) => return self.handle_gram_grab(request.id, params),
@@ -2681,6 +2683,7 @@ fn push_event_text(kind: crate::push::PushKind) -> &'static str {
         // Gram alerts are built in `emit_apns_gram_message`, never from an agent
         // transition, so this arm only keeps the match exhaustive.
         crate::push::PushKind::Gram => "sent a message",
+        crate::push::PushKind::Feed => "asks",
     }
 }
 

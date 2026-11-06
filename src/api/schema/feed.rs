@@ -16,6 +16,20 @@ pub struct FeedCardInfo {
     pub error: Option<String>,
 }
 
+/// Parameters for `feed.ask` — an agent asks the owner something: `card` is a feed card
+/// (`title`, `body`, `actions` and/or `input`, ...) that herdr writes as
+/// `<source>/<id>.json` (`source` defaults to `agents`) and pushes to the owner's phone
+/// as a time-sensitive alert. The owner's answer is typed back into the asking pane
+/// (`caller_pane_id`) as a prompt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
+pub struct FeedAskParams {
+    pub card: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caller_pane_id: Option<String>,
+}
+
 /// Parameters for `feed.act` — the owner answers card `id` of `source`: one of the
 /// card's `actions` by id, and/or `text` when the card takes `input`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]

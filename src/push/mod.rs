@@ -43,6 +43,8 @@ pub(crate) enum PushKind {
     Died,
     /// An agent sent the owner a gram message.
     Gram,
+    /// An agent asked the owner a question as a feed card (`herdr feed ask`).
+    Feed,
 }
 
 /// One agent-state transition to deliver as an APNs alert. `pane_id` and
@@ -73,6 +75,8 @@ pub(crate) struct PushNotification {
     /// The question this alert lets the owner answer (`herdr_ask`), filled on
     /// the push thread from `ask_source`.
     pub ask: Option<PushAsk>,
+    /// A `Feed` alert's card, `<source>/<id>`: tapping it opens that card.
+    pub feed: Option<String>,
 }
 
 /// True when the push config is complete enough to attempt delivery: the master
@@ -182,6 +186,8 @@ fn device_wants(device: &RegisteredDevice, kind: PushKind) -> bool {
         PushKind::Finished => device.notify_finishes,
         PushKind::Died => device.notify_dies,
         PushKind::Gram => device.notify_gram,
+        // A question waits for the owner, as a blocked agent does.
+        PushKind::Feed => device.notify_needs_input,
     }
 }
 
@@ -931,6 +937,7 @@ mod tests {
             guest_scope: None,
             ask_source: None,
             ask: None,
+            feed: None,
         };
         assert!(!device_accepts(&device, &gram(false)));
         assert!(device_accepts(&device, &gram(true)));

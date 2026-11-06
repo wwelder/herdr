@@ -160,6 +160,7 @@ operations::define_operations! {
     FsListDir(FsListDirParams) => "fs.list_dir", false, false;
     FeedList(EmptyParams) => "feed.list", false, false;
     FeedAct(FeedActParams) => "feed.act", false, false;
+    FeedAsk(FeedAskParams) => "feed.ask", false, false;
     PaneSplit(PaneSplitParams) => "pane.split", true, true;
     PaneSwap(PaneSwapParams) => "pane.swap", true, true;
     PaneMove(PaneMoveParams) => "pane.move", true, false;

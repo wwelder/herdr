@@ -223,6 +223,7 @@ impl RemoteTransition {
             // (`herdr_ask`); a peer's ask arrives as a plain alert.
             ask_source: None,
             ask: None,
+            feed: None,
         })
     }
 }

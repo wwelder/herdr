@@ -57,7 +57,7 @@ pub(super) fn run_gram_command(args: &[String]) -> std::io::Result<i32> {
     }
 }
 
-fn env_pane_id() -> Option<String> {
+pub(super) fn env_pane_id() -> Option<String> {
     std::env::var("HERDR_PANE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())

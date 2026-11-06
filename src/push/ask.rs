@@ -180,6 +180,7 @@ mod tests {
                 agent: "jarvis".into(),
             }),
             ask: None,
+            feed: None,
         }
     }
 

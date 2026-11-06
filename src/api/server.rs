@@ -5073,6 +5073,7 @@ mod federation_tests {
             // The owner's private summaries.
             ("feed.list", Denied),
             ("feed.act", Denied),
+            ("feed.ask", Denied),
             ("agent.prompt", AllowedAt(Interact)),
             ("agent.wait", AllowedAt(Observe)),
             ("agent.answer", AllowedAt(Admin)),

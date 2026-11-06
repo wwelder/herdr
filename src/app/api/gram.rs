@@ -1128,6 +1128,65 @@ impl App {
         );
     }
 
+    /// `feed.ask`: an agent's question to the owner as a feed card (`api::feed::ask`),
+    /// pushed to the owner's devices as a time-sensitive alert that opens it. The card
+    /// names the asking pane, so the owner's answer is typed back there as a prompt.
+    pub(super) fn handle_feed_ask(
+        &mut self,
+        id: String,
+        params: crate::api::schema::FeedAskParams,
+    ) -> String {
+        let caller = params.caller_pane_id.as_deref();
+        let agent = self.resolve_sender(None, caller);
+        let asker = caller.and_then(|pane| self.gram_pane_place(pane)).map(|place| {
+            serde_json::json!({"session": place.session, "pane_id": place.pane_id, "agent": agent})
+        });
+        let source = params.source.unwrap_or_else(|| "agents".to_owned());
+        let question = params.card.get("title").and_then(|title| title.as_str());
+        let body = super::sanitized_notification_text(question.unwrap_or_default(), 240)
+            .unwrap_or_default();
+        let card_id = match crate::api::feed::ask(
+            &crate::api::feed::feeds_dir(),
+            &source,
+            params.card,
+            asker,
+            time::OffsetDateTime::now_utc(),
+        ) {
+            Ok(card_id) => card_id,
+            Err(error) => return super::responses::encode_error_body(id, error),
+        };
+        if !self.no_session && crate::push::may_deliver(&self.state.push_config) {
+            let title = super::sanitized_notification_text(&format!("{agent} asks"), 80)
+                .unwrap_or_else(|| "A question for you".to_owned());
+            crate::push::dispatch(
+                self.state.push_config.clone(),
+                vec![crate::push::PushNotification {
+                    title,
+                    body,
+                    pane_id: String::new(),
+                    workspace_id: String::new(),
+                    kind: crate::push::PushKind::Feed,
+                    agent: String::new(),
+                    request: None,
+                    critical: false,
+                    // The owner's own question: guests never see it.
+                    #[cfg(unix)]
+                    guest_scope: None,
+                    ask_source: None,
+                    ask: None,
+                    feed: Some(format!("{source}/{card_id}")),
+                }],
+            );
+        }
+        encode_success(
+            id,
+            ResponseResult::FeedAsked {
+                source,
+                id: card_id,
+            },
+        )
+    }
+
     /// Display label of each federated machine by routing alias: the label the
     /// federation store stamps on that machine's cached agents and workspaces.
     /// A machine whose label is only its alias has none.
@@ -1222,6 +1281,7 @@ pub(crate) fn gram_push_notification(
         }),
         ask_source: None,
         ask: None,
+        feed: None,
     }
 }
 

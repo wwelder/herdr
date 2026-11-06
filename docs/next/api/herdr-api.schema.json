@@ -2985,6 +2985,28 @@
           ],
           "type": "object"
         },
+        "FeedAskParams": {
+          "description": "Parameters for `feed.ask` — an agent asks the owner something: `card` is a feed card\n(`title`, `body`, `actions` and/or `input`, ...) that herdr writes as\n`<source>/<id>.json` (`source` defaults to `agents`) and pushes to the owner's phone\nas a time-sensitive alert. The owner's answer is typed back into the asking pane\n(`caller_pane_id`) as a prompt.",
+          "properties": {
+            "caller_pane_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "card": true,
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "card"
+          ],
+          "type": "object"
+        },
         "FsListDirParams": {
           "description": "Parameters for `fs.list_dir` — list a single directory's entries, for an app\nfolder picker. `path` is absolute; a leading `~` is expanded and `None`\ndefaults to `$HOME`. Read-only; never writes or traverses recursively.",
           "properties": {
@@ -7873,6 +7895,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/FeedActParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "feed.ask",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/FeedAskParams"
             }
           },
           "required": [
@@ -16692,6 +16730,26 @@
               },
               "required": [
                 "type"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "type": {
+                  "const": "feed_asked",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "source",
+                "id"
               ],
               "type": "object"
             },

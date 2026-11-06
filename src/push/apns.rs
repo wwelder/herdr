@@ -70,12 +70,17 @@ fn payload_body_in(notification: &PushNotification, session: &str) -> String {
     // its kind, agent and question top-level, and is mutable so the notification
     // service extension can hand them to the home-screen widgets.
     let kind = match notification.kind {
-        PushKind::Gram => None,
+        PushKind::Gram | PushKind::Feed => None,
         PushKind::NeedsInput => Some("needs_input"),
         PushKind::Finished => Some("finished"),
         PushKind::Died => Some("died"),
     };
     match kind {
+        // An agent's question opens its card, and breaks through Focus: it is waiting.
+        None if notification.kind == PushKind::Feed => {
+            payload["feed"] = serde_json::json!(notification.feed);
+            payload["aps"]["interruption-level"] = serde_json::json!("time-sensitive");
+        }
         None => payload["gram"] = serde_json::Value::Bool(true),
         Some(kind) => {
             payload["kind"] = serde_json::json!(kind);
@@ -388,6 +393,7 @@ mod tests {
             guest_scope: None,
             ask_source: None,
             ask: None,
+            feed: None,
         }
     }
 
@@ -479,6 +485,20 @@ mod tests {
         assert!(payload.get("kind").is_none());
         assert!(payload.get("agent").is_none());
         assert!(payload["aps"].get("mutable-content").is_none());
+    }
+
+    #[test]
+    fn payload_body_opens_an_asked_card_and_breaks_through_focus() {
+        let mut notification = sample_notification();
+        notification.kind = PushKind::Feed;
+        notification.pane_id = String::new();
+        notification.feed = Some("agents/ask-1".into());
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload_body_in(&notification, "default")).unwrap();
+        assert_eq!(payload["feed"], "agents/ask-1");
+        assert_eq!(payload["aps"]["interruption-level"], "time-sensitive");
+        assert!(payload.get("gram").is_none());
+        assert!(payload.get("kind").is_none());
     }
 
     #[test]

@@ -171,6 +171,10 @@ pub enum ResponseResult {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         output: Option<String>,
     },
+    FeedAsked {
+        source: String,
+        id: String,
+    },
     AgentView {
         active: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]

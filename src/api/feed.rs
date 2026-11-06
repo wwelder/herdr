@@ -2,7 +2,8 @@
 //! the owner's answers to them. `feed.list` serves the cards unparsed (the app reads
 //! them); `feed.act` records an answer in `<id>.reply.json` and runs the source's
 //! `on-reply` handler. The script owns the card and herdr owns the reply, so the two
-//! never write the same file.
+//! never write the same file. `feed.ask` is herdr writing a card itself, for an agent:
+//! its answer goes back to the asking pane as a prompt.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -98,9 +99,73 @@ pub(crate) fn act_response(request_id: String, params: &FeedActParams) -> String
     .expect("feed.act response serializes")
 }
 
+/// `feed.ask`: writes `card` as `<source>/<id>.json` for the owner to answer, stamped
+/// with `date` (when it has none) and `asker`, the pane the answer goes back to. Returns
+/// the new id. The card must ask something: `actions` (each with an `id` and a
+/// `label`) or `input`.
+pub(crate) fn ask(
+    dir: &Path,
+    source: &str,
+    mut card: serde_json::Value,
+    asker: Option<serde_json::Value>,
+    now: OffsetDateTime,
+) -> Result<String, ErrorBody> {
+    if !is_name(source) {
+        return Err(error("invalid_params", "source must be a plain file name"));
+    }
+    let checked: Card = serde_json::from_value(card.clone())
+        .map_err(|parse| error("invalid_params", format!("card: {parse}")))?;
+    let Some(object) = card.as_object_mut() else {
+        return Err(error("invalid_params", "card must be a JSON object"));
+    };
+    if checked.title.trim().is_empty() {
+        return Err(error("invalid_params", "card needs a title"));
+    }
+    if checked.actions.is_empty() && checked.input.is_none() {
+        return Err(error(
+            "invalid_params",
+            "card must ask something: actions, input, or both",
+        ));
+    }
+    if checked
+        .actions
+        .iter()
+        .any(|action| action.id.trim().is_empty() || action.label.trim().is_empty())
+    {
+        return Err(error(
+            "invalid_params",
+            "every action needs an id and a label",
+        ));
+    }
+    if let Some(expires) = &checked.expires {
+        OffsetDateTime::parse(expires, &Rfc3339)
+            .map_err(|parse| error("invalid_params", format!("expires: {parse}")))?;
+    }
+    object.remove("outcome");
+    object
+        .entry("date")
+        .or_insert_with(|| serde_json::json!(stamp(now)));
+    match asker {
+        Some(asker) => object.insert("asker".into(), asker),
+        None => object.remove("asker"),
+    };
+    let bytes = serde_json::to_vec_pretty(&card).expect("card serializes");
+    if bytes.len() as u64 > CARD_MAX_BYTES {
+        return Err(error("invalid_params", "card is larger than 256 KiB"));
+    }
+    let id = crate::persist::gram::new_id().replacen("gram-", "ask-", 1);
+    let source_dir = dir.join(source);
+    std::fs::create_dir_all(&source_dir)
+        .map_err(|create| error("feed_write_failed", create.to_string()))?;
+    write_once(&source_dir.join(format!("{id}.json")), &bytes)?;
+    Ok(id)
+}
+
 /// What `feed.act` checks of a card; the app reads the rest.
 #[derive(Deserialize)]
 struct Card {
+    #[serde(default)]
+    title: String,
     #[serde(default)]
     actions: Vec<CardAction>,
     /// The text field's placeholder: present when the card takes text.
@@ -108,11 +173,24 @@ struct Card {
     input: Option<String>,
     #[serde(default)]
     expires: Option<String>,
+    /// Set by `feed.ask`: the agent waiting for the answer.
+    #[serde(default)]
+    asker: Option<Asker>,
 }
 
 #[derive(Deserialize)]
 struct CardAction {
     id: String,
+    #[serde(default)]
+    label: String,
+}
+
+#[derive(Deserialize)]
+struct Asker {
+    session: String,
+    pane_id: String,
+    #[serde(default)]
+    agent: String,
 }
 
 /// Checks the answer against the card, writes `<id>.reply.json` once, then runs
@@ -171,21 +249,140 @@ fn act(
     let reply = serde_json::to_vec(&serde_json::json!({
         "action": params.action,
         "text": text,
-        // Whole seconds: every ISO 8601 reader takes them.
-        "at": now.replace_nanosecond(0).unwrap_or(now).format(&Rfc3339).unwrap_or_default(),
+        "at": stamp(now),
     }))
     .expect("reply serializes");
     let reply_path = source_dir.join(format!("{}{REPLY_SUFFIX}", params.id));
     write_once(&reply_path, &reply)?;
 
     let handler = source_dir.join("on-reply");
-    if !is_executable(&handler) {
-        return Ok(None);
+    if is_executable(&handler) {
+        return run_handler(&handler, &card_path, &reply, timeout).map_err(|message| {
+            let _ = std::fs::remove_file(&reply_path);
+            error("feed_handler_failed", message)
+        });
     }
-    run_handler(&handler, &card_path, &reply, timeout).map_err(|message| {
-        let _ = std::fs::remove_file(&reply_path);
-        error("feed_handler_failed", message)
-    })
+    let Some(asker) = &card.asker else {
+        return Ok(None);
+    };
+    let label = params.action.as_ref().map(|action| {
+        card.actions
+            .iter()
+            .find(|offered| &offered.id == action)
+            .map_or(action.as_str(), |offered| offered.label.as_str())
+    });
+    let prompt = answer_prompt(&params.source, &params.id, &card.title, label, text);
+    let agent = if asker.agent.is_empty() {
+        asker.pane_id.as_str()
+    } else {
+        asker.agent.as_str()
+    };
+    match deliver(asker, &prompt, timeout) {
+        Ok(()) => Ok(Some(format!("Sent to {agent}"))),
+        // The answer stays: the card is closed with why, rather than left asking.
+        Err(why) => {
+            let outcome = format!("Not delivered: {agent} {why}");
+            let _ = set_outcome(&card_path, &outcome);
+            Ok(Some(outcome))
+        }
+    }
+}
+
+/// The prompt the asking agent gets: which card, and what the owner chose and wrote.
+fn answer_prompt(
+    source: &str,
+    id: &str,
+    title: &str,
+    label: Option<&str>,
+    text: Option<&str>,
+) -> String {
+    let mut prompt =
+        format!("[HerdrUp] The owner answered your question {source}/{id} \"{title}\":");
+    if let Some(label) = label {
+        prompt.push_str(&format!(" {label}."));
+    }
+    if let Some(text) = text {
+        prompt.push_str(&format!(" They wrote: \"{text}\""));
+    }
+    prompt
+}
+
+/// Submits `prompt` to the asking pane with `herdr --session <session> agent prompt`:
+/// a CLI call rather than in-process, since the asker may be in another session's daemon.
+fn deliver(asker: &Asker, prompt: &str, timeout: Duration) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|exe| format!("couldn't be reached ({exe})"))?;
+    let mut child = Command::new(exe)
+        .args([
+            "--session",
+            &asker.session,
+            "agent",
+            "prompt",
+            &asker.pane_id,
+            prompt,
+        ])
+        // The daemon's own socket must not override `--session`.
+        .env_remove("HERDR_SOCKET_PATH")
+        .env_remove("HERDR_SESSION")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|spawn| format!("couldn't be reached ({spawn})"))?;
+    let stdout = drain(child.stdout.take());
+    let stderr = drain(child.stderr.take());
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("didn't take the answer in time".into());
+            }
+            Err(wait) => return Err(format!("couldn't be reached ({wait})")),
+        }
+    };
+    let stdout = stdout
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap_or_default();
+    let stderr = stderr
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap_or_default();
+    // The CLI prints an error response (and may still exit 0) when the pane is gone.
+    let refused = [&stdout, &stderr].into_iter().find_map(|said| {
+        serde_json::from_str::<serde_json::Value>(said)
+            .ok()
+            .and_then(|response| response["error"]["message"].as_str().map(str::to_owned))
+    });
+    if status.success() && refused.is_none() {
+        return Ok(());
+    }
+    let said = refused.unwrap_or_else(|| [stdout.trim(), stderr.trim()].join(" "));
+    Err(format!("couldn't be reached ({})", tail(said.trim())))
+}
+
+/// Records `outcome` in the card herdr wrote (`feed.ask`), atomically.
+fn set_outcome(card_path: &Path, outcome: &str) -> std::io::Result<()> {
+    let mut card: serde_json::Value = serde_json::from_slice(&std::fs::read(card_path)?)?;
+    if let Some(object) = card.as_object_mut() {
+        object.insert("outcome".into(), serde_json::json!(outcome));
+    }
+    let name = card_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("card");
+    let temp = card_path.with_file_name(format!(".{name}.{}.tmp", std::process::id()));
+    std::fs::write(&temp, serde_json::to_vec_pretty(&card)?)?;
+    std::fs::rename(&temp, card_path)
+}
+
+/// Whole seconds: every ISO 8601 reader takes them.
+fn stamp(now: OffsetDateTime) -> String {
+    now.replace_nanosecond(0)
+        .unwrap_or(now)
+        .format(&Rfc3339)
+        .unwrap_or_default()
 }
 
 /// Writes `bytes` to `path` only if nothing is there yet, atomically: a temp file is
@@ -508,6 +705,90 @@ mod tests {
             "{output}"
         );
         assert!(kg.join("a.reply.json").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ask_writes_a_question_for_the_asker_and_refuses_one_that_asks_nothing() {
+        let dir = temp_dir("ask");
+        let asker = serde_json::json!({"session": "work", "pane_id": "w1:p2", "agent": "jarvis"});
+        let card: serde_json::Value = serde_json::from_str(CARD).unwrap();
+        let mut stale = card.clone();
+        stale["outcome"] = serde_json::json!("done already");
+        let id = ask(&dir, "agents", stale, Some(asker.clone()), at(NOW)).unwrap();
+        assert!(id.starts_with("ask-"), "{id}");
+        let written: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.join("agents").join(format!("{id}.json"))).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(written["title"], "Add?");
+        assert_eq!(written["date"], NOW);
+        assert_eq!(written["asker"], asker);
+        assert!(written.get("outcome").is_none());
+
+        let refused = |card: serde_json::Value, source: &str| {
+            ask(&dir, source, card, None, at(NOW)).unwrap_err().code
+        };
+        assert_eq!(
+            refused(serde_json::json!({"title": "FYI"}), "agents"),
+            "invalid_params"
+        );
+        assert_eq!(
+            refused(
+                serde_json::json!({"actions": [{"id": "ok", "label": "OK"}]}),
+                "agents"
+            ),
+            "invalid_params"
+        );
+        assert_eq!(
+            refused(
+                serde_json::json!({"title": "Go?", "actions": [{"id": "ok"}]}),
+                "agents"
+            ),
+            "invalid_params"
+        );
+        assert_eq!(
+            refused(serde_json::json!(["not", "a", "card"]), "agents"),
+            "invalid_params"
+        );
+        assert_eq!(refused(card.clone(), "../etc"), "invalid_params");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_answer_the_asker_cannot_take_closes_the_card_with_why() {
+        let dir = temp_dir("asker-gone");
+        let card = serde_json::json!({
+            "title": "Deploy?",
+            "actions": [{"id": "yes", "label": "Deploy"}],
+            "input": "Note",
+        });
+        // No herdr session `nowhere` exists here (and under test the executable is the
+        // test runner, which refuses the arguments): delivery fails either way.
+        let asker =
+            serde_json::json!({"session": "nowhere", "pane_id": "w9:p9", "agent": "jarvis"});
+        let id = ask(&dir, "agents", card, Some(asker), at(NOW)).unwrap();
+        let mut answer = params(&id, Some("yes"), Some("carefully"));
+        answer.source = "agents".to_owned();
+        let output = act(&dir, &answer, Duration::from_secs(10), at(NOW))
+            .unwrap()
+            .unwrap();
+        assert!(
+            output.starts_with("Not delivered: jarvis couldn't be reached"),
+            "{output}"
+        );
+        let card_path = dir.join("agents").join(format!("{id}.json"));
+        let card: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&card_path).unwrap()).unwrap();
+        assert_eq!(card["outcome"], output.as_str());
+        assert!(dir
+            .join("agents")
+            .join(format!("{id}{REPLY_SUFFIX}"))
+            .exists());
+        assert_eq!(
+            answer_prompt("agents", &id, "Deploy?", Some("Deploy"), Some("carefully")),
+            format!("[HerdrUp] The owner answered your question agents/{id} \"Deploy?\": Deploy. They wrote: \"carefully\"")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -183,7 +183,7 @@ impl App {
                     item.text = DIED_TEXT.to_owned();
                     jobs.push(GramJob::Event(GramEvent::Append(item)));
                 }
-                crate::push::PushKind::Gram => {}
+                crate::push::PushKind::Gram | crate::push::PushKind::Feed => {}
             }
         }
         dispatch(jobs);

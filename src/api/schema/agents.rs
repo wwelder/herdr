@@ -511,10 +511,11 @@ pub struct AgentInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_agent: Option<String>,
     pub agent_status: AgentStatus,
-    /// A subagent another agent spawned (`codex exec`, alias `e`). Listed so an
-    /// orchestrating agent can see it; owner surfaces hide it, and it gets no
-    /// alerts or Gram entries. Absent (false) for a main agent, an archived one,
-    /// and from older daemons.
+    /// A subagent another agent spawned (`codex exec`, alias `e`), or a Codex agent on
+    /// Codex's shared daemon (it has no session of its own). Listed so an
+    /// orchestrating agent can see it; owner surfaces hide it, and a `codex exec`
+    /// one gets no alerts or Gram entries. Absent (false) for a main agent, an
+    /// archived one, and from older daemons.
     #[serde(default, skip_serializing_if = "super::is_false")]
     pub subagent: bool,
     /// What a blocked agent is asking, read off its screen: the lines above a numbered

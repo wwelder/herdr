@@ -16,7 +16,9 @@ use std::sync::{Arc, LazyLock, Mutex};
 use base64::Engine as _;
 use serde_json::Value;
 
-use super::normalize::{parse_iso8601_ms, truncate_chars, user_author, DETAIL_MAX_CHARS};
+use super::normalize::{
+    parse_iso8601_ms, truncate_chars, user_author, DETAIL_MAX_CHARS, SUMMARY_TEXT,
+};
 use super::reply::{claude_prompt, claude_text};
 use super::{Page, PageRequest, TranscriptError, DEFAULT_TURNS, MAX_TURNS};
 use crate::api::schema::{
@@ -525,10 +527,12 @@ fn claude_record(record: &Value) -> Option<Record> {
         let message = &record["message"];
         let content = &message["content"];
         match record["type"].as_str() {
+            // The summary itself is Claude's own context, not the owner's chat; the
+            // divider only marks where it was compacted, as omp's does.
             Some("user") if record["isCompactSummary"] == true => pieces.push(Piece::Summary {
                 id: uuid.clone(),
                 ts,
-                text: claude_text(content),
+                text: SUMMARY_TEXT.to_owned(),
             }),
             Some("user") => {
                 let results: Vec<&Value> = content
@@ -584,7 +588,9 @@ fn claude_record(record: &Value) -> Option<Record> {
                             }
                         }
                         Some("tool_use") => {
-                            let tool = block["name"].as_str().unwrap_or_default().to_owned();
+                            let name = block["name"].as_str().unwrap_or_default();
+                            // `mcp__server__tool` reads as its tool.
+                            let tool = name.rsplit("__").next().unwrap_or(name).to_owned();
                             let (intent, detail) = claude_step(&tool, &block["input"]);
                             pieces.push(Piece::Step {
                                 id: block["id"].as_str().map_or(id, str::to_owned),
@@ -812,10 +818,42 @@ mod tests {
                     ..
                 } => format!("step {tool} {intent} {status:?}"),
                 TranscriptEntry::TurnEnd { status, .. } => format!("end {status:?}"),
-                TranscriptEntry::Summary { .. } => "summary".into(),
+                TranscriptEntry::Summary { text, .. } => format!("summary {text}"),
                 _ => "other".into(),
             })
             .collect()
+    }
+
+    #[test]
+    fn a_compacted_claude_session_shows_a_divider_and_short_mcp_names() {
+        let mcp = json!([{"type": "tool_use", "id": "t1", "name": "mcp__claude_ai_Gmail__search_threads",
+            "input": {"query": "rclone"}}]);
+        let mut summary = claude(
+            "c1",
+            None,
+            "user",
+            json!("This session is being continued from a previous conversation..."),
+            None,
+        );
+        summary["isCompactSummary"] = json!(true);
+        summary["logicalParentUuid"] = json!("old");
+        let path = file(
+            "compacted",
+            &[
+                summary,
+                claude("u1", Some("c1"), "user", json!("go on"), None),
+                claude("a1", Some("u1"), "assistant", mcp, Some("tool_use")),
+            ],
+        );
+        let page = read_page(&path, Harness::Claude, &PageRequest::default()).unwrap();
+        assert_eq!(
+            kinds(&page.entries),
+            [
+                "summary Earlier messages were summarised",
+                "user go on",
+                "step search_threads rclone Running"
+            ]
+        );
     }
 
     #[test]

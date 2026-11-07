@@ -1175,6 +1175,11 @@ impl App {
             .and_then(|runtime| {
                 crate::detect::background::background_work(&runtime.visible_text())
             });
+        // A Codex agent on Codex's shared app-server daemon never reports a session of its
+        // own: a script or another agent started it (the owner's Codex runs `--no-daemon`).
+        // Listed as a subagent, so clients hide it like a `codex exec` worker.
+        let subagent = terminal.is_subagent()
+            || (pane.agent.as_deref() == Some("codex") && pane.agent_session.is_none());
         Some(crate::api::schema::AgentInfo {
             terminal_id: pane.terminal_id,
             name: terminal.agent_name.clone(),
@@ -1184,7 +1189,7 @@ impl App {
             terminal_title_stripped: pane.terminal_title_stripped,
             display_agent: pane.display_agent,
             agent_status: pane.agent_status,
-            subagent: terminal.is_subagent(),
+            subagent,
             pending_request,
             background,
             input_pending: pane.input_pending,

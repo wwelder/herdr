@@ -524,6 +524,12 @@ fn main() -> io::Result<()> {
             std::process::exit(2);
         }
     };
+    // Hidden: run as root by the live-activity leader to count other users' APM, so it
+    // touches no config, session or log first.
+    if raw_args.get(1).map(String::as_str) == Some("fleet-apm") {
+        push::fleet::print_apm(&raw_args[2..]);
+        return Ok(());
+    }
     #[cfg(windows)]
     if let Some(result) = platform::maybe_activate_desktop_notification(&raw_args) {
         return result;

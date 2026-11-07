@@ -4,8 +4,8 @@
 //! under the config dir and pushes the merge of every live server's file.
 //!
 //! The lowest live pid also measures host APM every [`TICK`]: Claude + Codex tool calls per
-//! minute over the last five minutes, counted from their transcripts with the same rules as
-//! the wezterm status bar's `ai-usage --apm`.
+//! minute over the last five minutes, summed over every user's home on the machine, counted
+//! from their transcripts with the same rules as the wezterm status bar's `ai-usage --apm`.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -84,11 +84,12 @@ pub(crate) fn start(events: tokio::sync::mpsc::Sender<crate::events::AppEvent>) 
     let spawned = crate::thread_spawn::spawn_named("herdr-fleet", move || {
         let mut last: Option<String> = None;
         let mut first = true;
+        let mut sudo = true;
         loop {
             let mut changed = std::mem::take(&mut first);
             if !crate::persist::activities::load().is_empty() && is_leader(&dir()) {
                 if let Some(home) = std::env::var_os("HOME") {
-                    let apm = format!("{:.1}", apm(Path::new(&home), unix_secs()));
+                    let apm = format!("{:.1}", host_apm(Path::new(&home), &mut sudo));
                     // Rewritten every tick: its age is how peers know a leader is alive.
                     write_atomic(&dir().join("apm"), &apm);
                     changed |= last.as_ref() != Some(&apm);
@@ -108,6 +109,52 @@ pub(crate) fn start(events: tokio::sync::mpsc::Sender<crate::events::AppEvent>) 
     if let Err(err) = spawned {
         tracing::warn!(error = %err, "failed to start the live-activity ticker");
     }
+}
+
+/// Our own APM plus every other home beside ours. Other users' transcripts are 0600, so
+/// they are counted by `herdr fleet-apm` through `sudo -n`; on a machine without
+/// passwordless sudo the first refusal leaves only our own.
+// ponytail: one sudo per tick (an auth-log line every 20 s); a long-lived helper if that matters.
+fn host_apm(home: &Path, sudo: &mut bool) -> f64 {
+    let own = apm(home, unix_secs());
+    let others: Vec<PathBuf> = home
+        .parent()
+        .and_then(|parent| std::fs::read_dir(parent).ok())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path != home && path.is_dir())
+        .collect();
+    if !*sudo || others.is_empty() {
+        return own;
+    }
+    let counted = std::env::current_exe().ok().and_then(|exe| {
+        let out = std::process::Command::new("sudo")
+            .arg("-n")
+            .arg(exe)
+            .arg("fleet-apm")
+            .args(&others)
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        out.status.success().then_some(())?;
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<f64>()
+            .ok()
+    });
+    *sudo = counted.is_some();
+    own + counted.unwrap_or(0.0)
+}
+
+/// `herdr fleet-apm <home>...`: the APM of these homes together, printed for a leader that
+/// cannot read them itself.
+pub(crate) fn print_apm(homes: &[String]) {
+    let now = unix_secs();
+    let total: f64 = homes.iter().map(|home| apm(Path::new(home), now)).sum();
+    println!("{total:.1}");
 }
 
 fn is_leader(dir: &Path) -> bool {

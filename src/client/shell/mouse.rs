@@ -2144,6 +2144,19 @@ impl ClientShellState {
                 if self.handle_endpoint_agent_click(point, outcome) {
                     return;
                 }
+                let group_toggle = self
+                    .hits
+                    .agent_group_toggles
+                    .iter()
+                    .find(|(rect, _)| super::contains(*rect, point))
+                    .map(|(_, pane_id)| pane_id.clone());
+                if let Some(caller) = group_toggle {
+                    if !self.expanded_agent_groups.remove(&caller) {
+                        self.expanded_agent_groups.insert(caller);
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
                 let agent_pane_id = self
                     .hits
                     .agents

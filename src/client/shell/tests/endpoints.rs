@@ -522,6 +522,10 @@ fn state_with_scrollable_agents() -> (ClientShellState, ClientEndpointId) {
             .collect();
         state.set_endpoint_snapshot(&endpoint_id, projection);
     }
+    // Its agents share one workspace; open the subagent group so they list flat.
+    state
+        .expanded_agent_groups
+        .extend((1..=8).map(|index| format!("pane_{index}")));
     state.compose(100, 28).unwrap();
     state.agent_scroll = 6;
     state.compose(100, 28).unwrap();

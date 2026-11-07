@@ -708,6 +708,10 @@ fn agent_sidebar_honors_priority_symbols_tokens_and_stable_hits() {
         ],
     );
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    // Its agents share the one test workspace; open the subagent group so they list flat.
+    state
+        .expanded_agent_groups
+        .extend(projected.agents.iter().map(|agent| agent.pane_id.clone()));
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(surface());
 
@@ -1681,4 +1685,93 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
     assert!(repaint);
     assert!(state.visible_notification.is_none());
     assert_eq!(state.pending_notifications.len(), 1);
+}
+
+#[test]
+fn subagents_fold_under_their_workspace_caller_until_its_badge_is_clicked() {
+    let mut projected = snapshot();
+    let mut other = projected.workspaces[0].clone();
+    other.workspace_id = "ws_2".into();
+    projected.workspaces.push(other);
+    let agent =
+        |pane_id: &str, workspace_id: &str, agent_status, state_change_seq| ClientShellAgent {
+            pane_id: pane_id.into(),
+            workspace_id: workspace_id.into(),
+            tab_id: "tab_1".into(),
+            name: Some(pane_id.into()),
+            display_agent: None,
+            agent: Some("claude".into()),
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            agent_status,
+            state_change_seq,
+            state_labels: Vec::new(),
+            tokens: Vec::new(),
+            focused: false,
+        };
+    // Priority order alone would be w1:p2, w2:p1, w1:pA, w1:p1.
+    projected.agents = vec![
+        agent("w1:p1", "ws_1", AgentStatus::Idle, 1),
+        agent("w1:p2", "ws_1", AgentStatus::Blocked, 5),
+        agent("w1:pA", "ws_1", AgentStatus::Working, 3),
+        agent("w2:p1", "ws_2", AgentStatus::Blocked, 4),
+    ];
+    let mut config = Config::default();
+    config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    let rows = |state: &ClientShellState| {
+        state
+            .hits
+            .agents
+            .iter()
+            .map(|(_, pane_id)| pane_id.clone())
+            .collect::<Vec<_>>()
+    };
+    let click = |state: &mut ClientShellState, rect: Rect| {
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::empty(),
+        })])
+    };
+
+    // Folded: the caller stands in its group's most urgent place, with a badge.
+    let frame = state.compose(106, 30).expect("folded agent panel");
+    assert_eq!(rows(&state), ["w1:p1", "w2:p1"]);
+    assert_eq!(state.hits.agent_group_toggles.len(), 1);
+    let (toggle, caller) = state.hits.agent_group_toggles[0].clone();
+    assert_eq!(caller, "w1:p1");
+    let badge = (toggle.x..toggle.right())
+        .map(|x| {
+            frame.cells[(toggle.y * frame.width + x) as usize]
+                .symbol
+                .as_str()
+        })
+        .collect::<String>();
+    assert_eq!(badge, " ▸ 2");
+
+    // The badge shows the subagents right under the caller, in panel order, and focuses nothing.
+    assert!(click(&mut state, toggle).actions.is_empty());
+    state.compose(106, 30).expect("expanded agent panel");
+    assert_eq!(rows(&state), ["w1:p1", "w1:p2", "w1:pA", "w2:p1"]);
+
+    // The rest of the caller's row still focuses it.
+    let caller_row = state.hits.agents[0].0;
+    let focus = click(&mut state, caller_row);
+    let [ClientShellAction::Endpoint { request, .. }] = &focus.actions[..] else {
+        panic!("caller row should focus through endpoint API");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneFocus(target) if target.pane_id == "w1:p1"
+    ));
+
+    let toggle = state.hits.agent_group_toggles[0].0;
+    click(&mut state, toggle);
+    state.compose(106, 30).expect("folded again");
+    assert_eq!(rows(&state), ["w1:p1", "w2:p1"]);
 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ratatui::{
     buffer::Buffer,
@@ -15,6 +15,103 @@ pub(super) struct AgentRow {
     pub(super) status: crate::api::schema::AgentStatus,
     pub(super) focused: bool,
     pub(super) rows: Vec<Vec<crate::ui::ResolvedToken>>,
+    /// Set on a caller's row when it has subagents.
+    pub(super) group: Option<SubagentGroup>,
+    /// A subagent, shown indented under its expanded caller.
+    pub(super) subagent: bool,
+}
+
+pub(super) struct SubagentGroup {
+    pub(super) count: usize,
+    pub(super) expanded: bool,
+    /// The most urgent subagent's status, which colours the folded badge.
+    pub(super) status: crate::api::schema::AgentStatus,
+}
+
+/// Columns a subagent row is indented under its caller.
+const SUBAGENT_INDENT: u16 = 2;
+
+/// Folds subagents under the agent that spawned them. Agents start their workers in their
+/// own workspace, so a workspace's lowest-numbered agent pane (its oldest) is taken as the
+/// caller and every other agent there as its subagent. A group sits where its first member
+/// is in `rows` (with the priority sort, its most urgent one); the caller comes first and
+/// its subagents follow only while it is in `expanded`.
+// ponytail: "same workspace, oldest pane" stands in for who spawned whom; record the caller
+// at pane.split if two independent agents sharing a workspace ever need to stay apart.
+pub(super) fn group_subagents(
+    rows: Vec<AgentRow>,
+    snapshot: &ClientShellSnapshot,
+    expanded: &HashSet<String>,
+) -> Vec<AgentRow> {
+    let workspaces = rows
+        .iter()
+        .map(|row| {
+            snapshot
+                .agents
+                .iter()
+                .find(|agent| agent.pane_id == row.pane_id)
+                .map(|agent| agent.workspace_id.clone())
+        })
+        .collect::<Vec<_>>();
+    let number = |pane_id: &str| {
+        pane_id
+            .rsplit_once(":p")
+            .and_then(|(_, number)| crate::workspace::decode_public_number(number))
+            .unwrap_or(usize::MAX)
+    };
+    let mut rows = rows.into_iter().map(Some).collect::<Vec<_>>();
+    let mut grouped = Vec::with_capacity(rows.len());
+    for index in 0..rows.len() {
+        if rows[index].is_none() {
+            continue;
+        }
+        let members = (index..rows.len())
+            .filter(|&member| {
+                member == index
+                    || (workspaces[index].is_some()
+                        && workspaces[member] == workspaces[index]
+                        && rows[member].is_some())
+            })
+            .collect::<Vec<_>>();
+        let caller = members
+            .iter()
+            .copied()
+            .min_by_key(|&member| {
+                rows[member]
+                    .as_ref()
+                    .map_or(usize::MAX, |row| number(&row.pane_id))
+            })
+            .unwrap_or(index);
+        let Some(mut caller_row) = rows[caller].take() else {
+            continue;
+        };
+        let subagents = members
+            .into_iter()
+            .filter_map(|member| rows[member].take())
+            .collect::<Vec<_>>();
+        if let Some(status) = subagents
+            .iter()
+            .map(|row| row.status)
+            .max_by_key(|status| status_priority(*status))
+        {
+            let expanded = expanded.contains(&caller_row.pane_id);
+            caller_row.group = Some(SubagentGroup {
+                count: subagents.len(),
+                expanded,
+                status,
+            });
+            grouped.push(caller_row);
+            if expanded {
+                grouped.extend(subagents.into_iter().map(|row| AgentRow {
+                    subagent: true,
+                    ..row
+                }));
+            }
+        } else {
+            grouped.push(caller_row);
+        }
+    }
+    grouped
 }
 
 pub(super) fn ordered_agent_pane_ids(
@@ -54,6 +151,7 @@ pub(super) fn render_agent_panel(
     area: Rect,
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
+    expanded_groups: &HashSet<String>,
     agent_scroll: &mut usize,
     hits: &mut ShellHitMap,
 ) {
@@ -67,7 +165,10 @@ pub(super) fn render_agent_panel(
         return;
     }
 
-    let rows = agent_rows(snapshot, config, None);
+    let mut rows = agent_rows(snapshot, config, None);
+    if snapshot.agent_view_label.is_none() {
+        rows = group_subagents(rows, snapshot, expanded_groups);
+    }
     render_agent_list(
         buffer,
         area,
@@ -82,9 +183,52 @@ pub(super) fn render_agent_panel(
         |row| row.rows.len(),
         |buffer, rect, row, hits| {
             hits.agents.push((rect, row.pane_id.clone()));
-            render_agent_row(buffer, rect, row, config);
+            render_grouped_agent_row(buffer, rect, row, config, hits);
         },
     );
+}
+
+/// An agent row, indented when it is a subagent; a caller's row ends in a `▸ N` / `▾ N`
+/// badge that folds or shows its subagents.
+fn render_grouped_agent_row(
+    buffer: &mut Buffer,
+    rect: Rect,
+    row: &AgentRow,
+    config: &ClientShellConfig,
+    hits: &mut ShellHitMap,
+) {
+    let Some(group) = &row.group else {
+        let indent = if row.subagent {
+            SUBAGENT_INDENT.min(rect.width)
+        } else {
+            0
+        };
+        let rect = Rect::new(rect.x + indent, rect.y, rect.width - indent, rect.height);
+        render_agent_row(buffer, rect, row, config, 0);
+        return;
+    };
+    let badge = format!(
+        " {} {}",
+        if group.expanded { "▾" } else { "▸" },
+        group.count
+    );
+    let width = (display_width(&badge) as u16).min(rect.width);
+    render_agent_row(buffer, rect, row, config, width);
+    let toggle = Rect::new(rect.right() - width, rect.y, width, 1);
+    let color = if group.expanded {
+        config.palette.overlay0
+    } else {
+        status_color(group.status, &config.palette)
+    };
+    put_text(
+        buffer,
+        toggle.x,
+        toggle.y,
+        toggle.width,
+        &badge,
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    );
+    hits.agent_group_toggles.push((toggle, row.pane_id.clone()));
 }
 
 pub(super) fn render_agent_panel_header(
@@ -315,14 +459,19 @@ pub(super) fn agent_row(
         status: agent.agent_status,
         focused: agent.focused,
         rows,
+        group: None,
+        subagent: false,
     })
 }
 
+/// Draws `row` in `rect`, leaving the last `first_line_reserve` columns of its first line
+/// blank (a caller's badge goes there).
 pub(super) fn render_agent_row(
     buffer: &mut Buffer,
     rect: Rect,
     row: &AgentRow,
     config: &ClientShellConfig,
+    first_line_reserve: u16,
 ) {
     let palette = &config.palette;
     let row_style = if row.focused {
@@ -355,6 +504,11 @@ pub(super) fn render_agent_row(
     };
     for (index, tokens) in rows.iter().take(rect.height as usize).enumerate() {
         let indent = if index == 0 { 1 } else { 3 };
+        let width = if index == 0 {
+            rect.width.saturating_sub(first_line_reserve)
+        } else {
+            rect.width
+        };
         let mut spans = vec![ratatui::text::Span::raw(" ".repeat(indent))];
         spans.extend(crate::ui::resolved_token_spans(
             tokens,
@@ -364,7 +518,7 @@ pub(super) fn render_agent_row(
             secondary,
             secondary,
             palette,
-            rect.width.saturating_sub(indent as u16) as usize,
+            width.saturating_sub(indent as u16) as usize,
         ));
         Paragraph::new(Line::from(spans)).style(row_style).render(
             Rect::new(rect.x, rect.y + index as u16, rect.width, 1),

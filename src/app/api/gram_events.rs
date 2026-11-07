@@ -120,7 +120,7 @@ impl App {
             else {
                 continue;
             };
-            if terminal.is_subagent() {
+            if self.state.pane_is_subagent(update.ws_idx, update.pane_id) {
                 continue;
             }
             // An exited agent no longer has an effective label; the update still
@@ -687,6 +687,57 @@ mod tests {
         assert_eq!(state["headline"], "No agents");
         // No local toast either.
         assert!(app.state.toast.is_none());
+    }
+
+    #[test]
+    fn a_worker_in_its_callers_workspace_is_a_subagent_that_never_notifies() {
+        let (mut app, caller) = agent_app(Agent::Claude, false);
+        let worker = app.state.workspaces[0].test_split(ratatui::layout::Direction::Horizontal);
+        app.state.ensure_test_terminals();
+        app.handle_internal_event(crate::events::AppEvent::AgentProcessDetected {
+            pane_id: worker,
+            runtime_epoch: None,
+            agent: Agent::Claude,
+            subagent: false,
+            observed_at: std::time::Instant::now(),
+        });
+        let jobs = test_sink::Capture::install();
+        let alerts = crate::push::test_sink::Capture::install();
+
+        for state in [
+            AgentState::Working,
+            AgentState::Blocked,
+            AgentState::Working,
+            AgentState::Idle,
+        ] {
+            observe(&mut app, worker, Agent::Claude, state);
+        }
+        assert!(
+            summary(jobs.take())
+                .iter()
+                .all(|job| job.starts_with("unblocked")),
+            "no entry for a worker"
+        );
+        let sent = alerts.take();
+        assert!(sent.alerts.is_empty(), "{:?}", sent.alerts);
+        assert!(app.state.toast.is_none(), "no local toast for a worker");
+
+        // Listed and flagged, so the TUI folds it under the caller; the caller is not.
+        assert!(app.agent_info(0, worker).unwrap().subagent);
+        assert!(!app.agent_info(0, caller).unwrap().subagent);
+        let state = super::super::live_activity_content_state(&app.collect_agent_infos());
+        assert_eq!(state["totalCount"], 1);
+
+        // The caller still alerts.
+        observe(&mut app, caller, Agent::Claude, AgentState::Working);
+        observe(&mut app, caller, Agent::Claude, AgentState::Blocked);
+        let kinds: Vec<_> = alerts
+            .take()
+            .alerts
+            .iter()
+            .map(|alert| alert.kind)
+            .collect();
+        assert_eq!(kinds, vec![crate::push::PushKind::NeedsInput]);
     }
 
     #[test]

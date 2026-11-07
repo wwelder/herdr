@@ -12008,7 +12008,7 @@
               ]
             },
             "subagent": {
-              "description": "A subagent another agent spawned (`codex exec`, alias `e`), or a Codex agent on\nCodex's shared daemon (it has no session of its own). Listed so an\norchestrating agent can see it; owner surfaces hide it, and a `codex exec`\none gets no alerts or Gram entries. Absent (false) for a main agent, an\narchived one, and from older daemons.",
+              "description": "An agent that works for another agent: a `codex exec` run (alias `e`), or any\nagent but its workspace's lowest-numbered agent pane, the caller that started it.\nOwner surfaces fold it under the caller, and it gets no alerts, toasts or Gram\nentries. Absent (false) for a main agent, an archived one, and from older\ndaemons.",
               "type": "boolean"
             },
             "tab_id": {

@@ -2138,8 +2138,8 @@ impl AppState {
             .get(ws_idx)?
             .pane_state(pane_id)
             .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))?;
-        // A subagent (`codex exec`) is hidden from the owner: no toast, no sound.
-        if terminal_state.state != expected_state || terminal_state.is_subagent() {
+        // A subagent works for another agent, not the owner: no toast, no sound.
+        if terminal_state.state != expected_state || self.pane_is_subagent(ws_idx, pane_id) {
             return None;
         }
         if terminal_state

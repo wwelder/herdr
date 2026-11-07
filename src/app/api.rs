@@ -1132,8 +1132,8 @@ impl App {
             let Some(terminal) = self.state.terminals.get(&pane.attached_terminal_id) else {
                 continue;
             };
-            // A subagent (`codex exec`) works for another agent, not the owner.
-            if terminal.is_subagent() {
+            // A subagent works for another agent, not the owner.
+            if self.state.pane_is_subagent(update.ws_idx, update.pane_id) {
                 continue;
             }
             // Only agent panes notify — an unrecognised terminal has no effective label.

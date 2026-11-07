@@ -975,6 +975,36 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Whether the agent in `pane_id` works for another agent rather than the owner: a
+    /// `codex exec` run, or any agent but its workspace's caller. Agents start their
+    /// workers in their own workspace, so the caller is the workspace's lowest-numbered
+    /// agent pane, and the TUI folds the others under it. Subagents never notify the
+    /// owner. The pane need not still run an agent, so a worker's exit stays quiet too.
+    // ponytail: "same workspace, oldest agent pane" stands in for who spawned whom; record
+    // the caller at pane.split if independent agents sharing a workspace must stay apart.
+    pub(crate) fn pane_is_subagent(&self, ws_idx: usize, pane_id: crate::layout::PaneId) -> bool {
+        let Some(ws) = self.workspaces.get(ws_idx) else {
+            return false;
+        };
+        let terminal = |pane_id| {
+            ws.pane_state(pane_id)
+                .and_then(|pane| self.terminals.get(&pane.attached_terminal_id))
+        };
+        if terminal(pane_id).is_some_and(|terminal| terminal.is_subagent()) {
+            return true;
+        }
+        let number = |pane_id| ws.public_pane_number(pane_id).unwrap_or(usize::MAX);
+        let own = number(pane_id);
+        ws.tabs
+            .iter()
+            .flat_map(|tab| tab.panes.keys().copied())
+            .any(|other| {
+                other != pane_id
+                    && number(other) < own
+                    && terminal(other).is_some_and(|terminal| terminal.is_agent_terminal())
+            })
+    }
+
     pub(crate) fn mark_session_dirty(&mut self) {
         self.session_dirty = true;
     }

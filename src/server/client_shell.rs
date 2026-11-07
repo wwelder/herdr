@@ -148,12 +148,10 @@ pub(super) fn snapshot_with_completions(
             }
         })
         .collect();
-    // Subagents (`codex exec`) stay in `agent.list` for orchestrating agents, but the
-    // owner's agent panel and its notifications leave them out.
+    // Subagents are listed too: the agent panel folds them under their caller.
     let agents = snapshot
         .agents
         .into_iter()
-        .filter(|agent| !agent.subagent)
         .map(|agent| {
             let pane_id = agent.pane_id;
             let focused = focused_pane_id.as_deref() == Some(pane_id.as_str());

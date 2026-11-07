@@ -52,6 +52,10 @@ impl HeadlessServer {
         else {
             return false;
         };
+        // A subagent works for another agent, not the owner.
+        if self.app.state.pane_is_subagent(ws_idx, pane_id) {
+            return false;
+        }
         let Some(workspace) = self.app.state.workspaces.get(ws_idx) else {
             return false;
         };
@@ -112,7 +116,12 @@ impl HeadlessServer {
         &mut self,
         update: &crate::app::actions::PaneStateUpdate,
     ) {
-        if self.app.state.toast_config.delay_seconds != 0 {
+        if self.app.state.toast_config.delay_seconds != 0
+            || self
+                .app
+                .state
+                .pane_is_subagent(update.ws_idx, update.pane_id)
+        {
             return;
         }
 

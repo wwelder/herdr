@@ -8369,3 +8369,48 @@ fn no_handle_internal_event_bypass_in_module() {
         bypass_lines.join("\n  ")
     );
 }
+
+#[test]
+fn a_worker_in_its_callers_workspace_sends_clients_no_notification() {
+    use crate::detect::{Agent, AgentState};
+    use protocol::SemanticNotificationKind::NeedsAttention;
+
+    let (writer, control_rx, _render_rx) = test_client_writer();
+    let (mut server, caller) = completion_guard_server(writer);
+    let worker = server.app.state.workspaces[0].test_split(ratatui::layout::Direction::Horizontal);
+    server.app.state.ensure_test_terminals();
+    for pane_id in [caller, worker] {
+        server.handle_internal_event_with_forwarding(AppEvent::AgentProcessDetected {
+            pane_id,
+            runtime_epoch: None,
+            agent: Agent::Claude,
+            subagent: false,
+            observed_at: Instant::now(),
+        });
+    }
+    let block = |server: &mut HeadlessServer, pane_id| {
+        for state in [AgentState::Working, AgentState::Blocked] {
+            server.handle_internal_event_with_forwarding(AppEvent::StateChanged {
+                runtime_epoch: None,
+                pane_id,
+                agent: Some(Agent::Claude),
+                state,
+                visible_blocker: false,
+                visible_working: false,
+                process_exited: false,
+                observed_at: Instant::now(),
+            });
+        }
+    };
+
+    block(&mut server, worker);
+    let worker_notifications = completion_guard_notifications(&mut server, &control_rx);
+    assert!(worker_notifications.is_empty(), "{worker_notifications:?}");
+
+    block(&mut server, caller);
+    let caller_notifications = completion_guard_notifications(&mut server, &control_rx);
+    assert!(
+        caller_notifications.contains(&NeedsAttention),
+        "{caller_notifications:?}"
+    );
+}

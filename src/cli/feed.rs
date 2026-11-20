@@ -8,7 +8,8 @@ const USAGE: &str = "usage: herdr feed ask [--source NAME] < card.json";
 /// (`title`, markdown `body`, `actions` [{id, label, role?: "destructive"}] and/or
 /// `input` as the reply field's placeholder, optional `confirm` and RFC 3339 `expires`).
 /// The owner gets a time-sensitive alert that opens the card; their answer comes back to
-/// this pane (`HERDR_PANE_ID`) as a prompt.
+/// this pane (`HERDR_PANE_ID`) as a prompt. They may always answer in their own words
+/// instead of picking an action, whether or not the card has `input`.
 pub(super) fn run_feed_command(args: &[String]) -> std::io::Result<i32> {
     let source = match args {
         [ask] if ask == "ask" => None,

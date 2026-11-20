@@ -235,8 +235,21 @@ fn act(
         }
         _ => {}
     }
+    let handler = source_dir.join("on-reply");
     if text.is_some() && card.input.is_none() {
-        return Err(error("invalid_params", "the card takes no text"));
+        if card.actions.is_empty() {
+            return Err(error("invalid_params", "the card takes no text"));
+        }
+        // The owner may answer a card that offered only choices in their own words: an
+        // asking agent reads them, and so does a script that reads the reply file. A
+        // handler was written for the choices alone; it would report success and the
+        // words would be lost.
+        if is_executable(&handler) {
+            return Err(error(
+                "invalid_params",
+                "this card is answered by a script that takes only its choices",
+            ));
+        }
     }
     if let Some(expires) = &card.expires {
         let expires = OffsetDateTime::parse(expires, &Rfc3339)
@@ -255,7 +268,6 @@ fn act(
     let reply_path = source_dir.join(format!("{}{REPLY_SUFFIX}", params.id));
     write_once(&reply_path, &reply)?;
 
-    let handler = source_dir.join("on-reply");
     if is_executable(&handler) {
         return run_handler(&handler, &card_path, &reply, timeout).map_err(|message| {
             let _ = std::fs::remove_file(&reply_path);
@@ -271,6 +283,8 @@ fn act(
             .find(|offered| &offered.id == action)
             .map_or(action.as_str(), |offered| offered.label.as_str())
     });
+    // Words alone, on a card that offered choices: the owner picked none of them.
+    let label = label.or((!card.actions.is_empty()).then_some("none of the choices you offered"));
     let prompt = answer_prompt(&params.source, &params.id, &card.title, label, text);
     let agent = if asker.agent.is_empty() {
         asker.pane_id.as_str()
@@ -640,6 +654,21 @@ mod tests {
             code(act(params("info", None, Some("hi")), NOW)),
             "invalid_params"
         );
+        // Choices only: the owner may still answer in their own words.
+        std::fs::write(
+            kg.join("pick.json"),
+            r#"{"title":"Which?","actions":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            act(params("pick", None, Some("neither, try C")), NOW).unwrap(),
+            None
+        );
+        let reply: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(kg.join("pick.reply.json")).unwrap())
+                .unwrap();
+        assert_eq!(reply["action"], serde_json::Value::Null);
+        assert_eq!(reply["text"], "neither, try C");
         assert_eq!(
             code(act(params("a", Some("add"), None), "2026-11-06T00:00:00Z")),
             "feed_expired"
@@ -697,6 +726,23 @@ mod tests {
             "feed_handler_failed"
         );
         assert!(!kg.join("a.reply.json").exists());
+
+        // A handler takes text only on a card that asked for it.
+        std::fs::write(
+            kg.join("pick.json"),
+            r#"{"title":"Which?","actions":[{"id":"a","label":"A"}]}"#,
+        )
+        .unwrap();
+        install("#!/bin/sh\nexit 0\n");
+        let refused = act(
+            &dir,
+            &params("pick", None, Some("neither")),
+            HANDLER_TIMEOUT,
+            at(NOW),
+        )
+        .unwrap_err();
+        assert_eq!(refused.code, "invalid_params");
+        assert!(!kg.join("pick.reply.json").exists());
 
         install("#!/bin/sh\nread reply\necho \"$1\" >/dev/null\necho \"ordered: $reply\"\n");
         let output = run(HANDLER_TIMEOUT).unwrap().unwrap();
@@ -789,6 +835,20 @@ mod tests {
             answer_prompt("agents", &id, "Deploy?", Some("Deploy"), Some("carefully")),
             format!("[HerdrUp] The owner answered your question agents/{id} \"Deploy?\": Deploy. They wrote: \"carefully\"")
         );
+        // Words alone on a card with choices: the asker is told no choice was picked.
+        let again = ask(
+            &dir,
+            "agents",
+            serde_json::json!({"title": "Deploy?", "actions": [{"id": "yes", "label": "Deploy"}]}),
+            Some(serde_json::json!({"session": "nowhere", "pane_id": "w9:p9", "agent": "jarvis"})),
+            at(NOW),
+        )
+        .unwrap();
+        let mut words = params(&again, None, Some("wait for the fix"));
+        words.source = "agents".to_owned();
+        assert!(act(&dir, &words, Duration::from_secs(10), at(NOW))
+            .unwrap()
+            .is_some_and(|output| output.starts_with("Not delivered")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

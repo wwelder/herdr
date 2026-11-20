@@ -6,6 +6,16 @@
 //! The lowest live pid also measures host APM every [`TICK`]: Claude + Codex tool calls per
 //! minute over the last five minutes, summed over every user's home on the machine, counted
 //! from their transcripts with the same rules as the wezterm status bar's `ai-usage --apm`.
+//!
+//! The pushed APM is this host's plus what other machines reported to it. A machine reports
+//! by writing its own figure to `live-activity/remote/<name>` here, once a minute from cron:
+//!
+//! ```sh
+//! herdr fleet-apm "$HOME" | ssh <this host> 'd=~/.config/herdr/live-activity/remote; \
+//!   mkdir -p $d && cat > $d/.<name> && mv $d/.<name> $d/<name>'
+//! ```
+//!
+//! So the phone, registered with one machine, shows the APM of all of them.
 
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -14,6 +24,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 
 const TICK: Duration = Duration::from_secs(20);
+/// How long a machine's reported APM counts. Reports come once a minute, so a machine that
+/// misses two drops out of the sum.
+const REPORT_MAX_AGE: Duration = Duration::from_secs(150);
 const APM_WINDOW_SECS: u64 = 5 * 60;
 // ponytail: reads only the last 8 MiB of each transcript touched in the window; an agent
 // that writes more than that in five minutes is undercounted.
@@ -92,8 +105,10 @@ pub(crate) fn start(events: tokio::sync::mpsc::Sender<crate::events::AppEvent>) 
                     let apm = format!("{:.1}", host_apm(Path::new(&home), &mut sudo));
                     // Rewritten every tick: its age is how peers know a leader is alive.
                     write_atomic(&dir().join("apm"), &apm);
-                    changed |= last.as_ref() != Some(&apm);
-                    last = Some(apm);
+                    // What the push will carry: ours plus what other machines reported.
+                    let total = read_apm(&dir()).map(|total| format!("{total:.1}"));
+                    changed |= last != total;
+                    last = total;
                 }
             }
             if changed
@@ -164,20 +179,48 @@ fn is_leader(dir: &Path) -> bool {
         .all(|(pid, _)| pid >= me || !alive(pid))
 }
 
-// Tests push this session alone; see `emit_live_activity`.
-#[cfg_attr(test, allow(dead_code))]
+/// This host's APM, when a leader measured it in the last minute, plus what other machines
+/// reported. `None` when there is neither.
 fn read_apm(dir: &Path) -> Option<f64> {
-    let path = dir.join("apm");
-    let age = std::fs::metadata(&path)
+    let own = fresh_apm(&dir.join("apm"), TICK * 3);
+    let reported = reported_apm(&dir.join("remote"));
+    if own.is_none() && reported.is_empty() {
+        return None;
+    }
+    let total = own.unwrap_or(0.0) + reported.iter().sum::<f64>();
+    Some((total * 10.0).round() / 10.0)
+}
+
+/// The figure each reporting machine last wrote into `remote`, while it is still fresh.
+/// Hidden files are a report being written (see the module comment).
+fn reported_apm(remote: &Path) -> Vec<f64> {
+    let Ok(entries) = std::fs::read_dir(remote) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .filter(|entry| !entry.file_name().to_string_lossy().starts_with('.'))
+        .filter_map(|entry| fresh_apm(&entry.path(), REPORT_MAX_AGE))
+        .collect()
+}
+
+/// The APM written in `path` no longer than `max_age` ago.
+fn fresh_apm(path: &Path, max_age: Duration) -> Option<f64> {
+    let age = std::fs::metadata(path)
         .ok()?
         .modified()
         .ok()?
         .elapsed()
         .ok()?;
-    if age > TICK * 3 {
+    if age > max_age {
         return None;
     }
-    std::fs::read_to_string(path).ok()?.trim().parse().ok()
+    std::fs::read_to_string(path)
+        .ok()?
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|apm| apm.is_finite() && *apm >= 0.0)
 }
 
 fn peers(dir: &Path) -> Vec<(u32, PathBuf)> {
@@ -343,6 +386,37 @@ mod tests {
         // Two Claude calls and one Codex call inside the window: 3 calls / 5 min.
         assert_eq!(apm(&home, now), 0.6);
         let _ = std::fs::remove_dir_all(home);
+    }
+
+    #[test]
+    fn pushed_apm_is_this_hosts_plus_what_other_machines_reported() {
+        let dir = std::env::temp_dir().join(format!("herdr-fleet-sum-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let remote = dir.join("remote");
+        std::fs::create_dir_all(&remote).unwrap();
+        assert_eq!(read_apm(&dir), None);
+
+        std::fs::write(dir.join("apm"), "1.2").unwrap();
+        assert_eq!(read_apm(&dir), Some(1.2));
+
+        std::fs::write(remote.join("mac"), "0.4\n").unwrap();
+        std::fs::write(remote.join("mini"), "2.0").unwrap();
+        std::fs::write(remote.join(".mini"), "50").unwrap(); // a report being written
+        std::fs::write(remote.join("junk"), "-3").unwrap();
+        std::fs::write(remote.join("gone"), "9.0").unwrap(); // stopped reporting
+        let old = SystemTime::now() - REPORT_MAX_AGE - Duration::from_secs(5);
+        std::fs::File::options()
+            .write(true)
+            .open(remote.join("gone"))
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert_eq!(read_apm(&dir), Some(3.6));
+
+        // No leader has measured here in the last minute: the reports still count.
+        std::fs::remove_file(dir.join("apm")).unwrap();
+        assert_eq!(read_apm(&dir), Some(2.4));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

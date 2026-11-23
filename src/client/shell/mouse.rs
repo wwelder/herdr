@@ -2141,20 +2141,21 @@ impl ClientShellState {
                     self.tab_press = Some(tab_press);
                     return;
                 }
-                if self.handle_endpoint_agent_click(point, outcome) {
-                    return;
-                }
+                // Before the row itself: a caller's badge sits inside its row.
                 let group_toggle = self
                     .hits
                     .agent_group_toggles
                     .iter()
                     .find(|(rect, _)| super::contains(*rect, point))
-                    .map(|(_, pane_id)| pane_id.clone());
+                    .map(|(_, group)| group.clone());
                 if let Some(caller) = group_toggle {
                     if !self.expanded_agent_groups.remove(&caller) {
                         self.expanded_agent_groups.insert(caller);
                     }
                     outcome.repaint = true;
+                    return;
+                }
+                if self.handle_endpoint_agent_click(point, outcome) {
                     return;
                 }
                 let agent_pane_id = self

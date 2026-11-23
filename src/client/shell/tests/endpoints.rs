@@ -522,10 +522,13 @@ fn state_with_scrollable_agents() -> (ClientShellState, ClientEndpointId) {
             .collect();
         state.set_endpoint_snapshot(&endpoint_id, projection);
     }
-    // Its agents share one workspace; open the subagent group so they list flat.
-    state
-        .expanded_agent_groups
-        .extend((1..=8).map(|index| format!("pane_{index}")));
+    // Each machine's agents share one workspace; open the subagent groups so they list flat,
+    // under the key of the multi-machine panel and of the one-machine panel.
+    state.expanded_agent_groups.extend(
+        [&ClientEndpointId::Local, &remote]
+            .map(|endpoint_id| format!("{}/pane_1", endpoint_id.storage_key())),
+    );
+    state.expanded_agent_groups.insert("pane_1".into());
     state.compose(100, 28).unwrap();
     state.agent_scroll = 6;
     state.compose(100, 28).unwrap();
@@ -3023,4 +3026,75 @@ fn navigator_foreign_workspace_heading_keeps_the_workspace_target() {
             target: Some(ClientEndpointFocusTarget::Workspace(workspace_id)),
         }] if activated == &endpoint_id && workspace_id == "ws_1"
     ));
+}
+
+#[test]
+fn aggregate_agents_fold_each_machines_subagents_under_their_caller() {
+    use crate::api::schema::AgentStatus;
+
+    let pane = |pane_id: &str, status, state_change_seq| ClientShellAgent {
+        pane_id: pane_id.into(),
+        focused: false,
+        ..agent(pane_id, status, state_change_seq)
+    };
+    let mut config = Config::default();
+    config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    let profile = remote_profile();
+    let remote_id = ClientEndpointId::Ssh(profile.id.clone());
+    state.set_endpoint_catalog(&[profile]);
+    state.set_endpoint_status(&remote_id, ClientEndpointStatus::Online);
+
+    // Both machines use the same workspace and pane ids, as real ones do.
+    let mut local = snapshot();
+    local.agents = vec![
+        pane("w1:p1", AgentStatus::Idle, 1),
+        pane("w1:p2", AgentStatus::Blocked, 2),
+    ];
+    state.set_snapshot(Box::new(local));
+    state.set_pane_surface(surface());
+    let mut remote = snapshot();
+    remote.boot_id = "remote-boot".into();
+    remote.agents = vec![
+        pane("w1:p1", AgentStatus::Working, 1),
+        pane("w1:p2", AgentStatus::Idle, 2),
+    ];
+    state.set_endpoint_snapshot(&remote_id, Box::new(remote));
+
+    let rows = |state: &ClientShellState| {
+        state
+            .hits
+            .endpoint_agents
+            .iter()
+            .map(|(_, endpoint_id, pane_id)| (endpoint_id.is_local(), pane_id.clone()))
+            .collect::<Vec<_>>()
+    };
+    let caller = |local| (local, "w1:p1".to_owned());
+    let click = |state: &mut ClientShellState, rect: Rect| {
+        state.handle_raw_events(vec![RawInputEvent::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::empty(),
+        })])
+    };
+
+    // Folded: one row per machine's caller, the group standing where its most urgent member is.
+    state.compose(100, 28).expect("folded aggregate panel");
+    assert_eq!(rows(&state), [caller(true), caller(false)]);
+    assert_eq!(state.hits.agent_group_toggles.len(), 2);
+
+    // A badge opens its own machine's group only, and focuses nothing.
+    let toggle = state.hits.agent_group_toggles[0].0;
+    assert!(click(&mut state, toggle).actions.is_empty());
+    state.compose(100, 28).expect("expanded aggregate panel");
+    assert_eq!(
+        rows(&state),
+        [caller(true), (true, "w1:p2".to_owned()), caller(false)]
+    );
+
+    let toggle = state.hits.agent_group_toggles[0].0;
+    click(&mut state, toggle);
+    state.compose(100, 28).expect("folded again");
+    assert_eq!(rows(&state), [caller(true), caller(false)]);
 }

@@ -9,7 +9,7 @@ pub(super) fn render_collapsed(
     config: &ClientShellConfig,
     hits: &mut ShellHitMap,
 ) {
-    let rows = agent_rows(endpoints, active_endpoint_id, config);
+    let rows = agent_rows(endpoints, active_endpoint_id, config, None);
     for (index, row) in rows.into_iter().take(area.height as usize).enumerate() {
         let rect = Rect::new(area.x, area.y + index as u16, area.width, 1);
         if row.agent.focused {
@@ -49,6 +49,7 @@ pub(super) fn render_expanded(
     endpoints: &[ClientShellEndpoint],
     active_endpoint_id: &ClientEndpointId,
     config: &ClientShellConfig,
+    expanded_groups: &HashSet<String>,
     agent_scroll: &mut usize,
     hits: &mut ShellHitMap,
 ) {
@@ -61,7 +62,7 @@ pub(super) fn render_expanded(
     ) {
         return;
     }
-    let rows = agent_rows(endpoints, active_endpoint_id, config);
+    let rows = agent_rows(endpoints, active_endpoint_id, config, Some(expanded_groups));
     super::agent_sidebar::render_agent_list(
         buffer,
         area,
@@ -72,7 +73,14 @@ pub(super) fn render_expanded(
         hits,
         |row| row.agent.rows.len(),
         |buffer, rect, row, hits| {
-            super::agent_sidebar::render_agent_row(buffer, rect, &row.agent, config, 0);
+            super::agent_sidebar::render_grouped_agent_row(
+                buffer,
+                rect,
+                &row.agent,
+                config,
+                hits,
+                &row.group_key(),
+            );
             if row.stale {
                 buffer.set_style(
                     rect,
@@ -97,7 +105,12 @@ impl ClientShellState {
         if body_height == 0 {
             return;
         }
-        let rows = agent_rows(&self.endpoints, &self.active_endpoint_id, &self.config);
+        let rows = agent_rows(
+            &self.endpoints,
+            &self.active_endpoint_id,
+            &self.config,
+            Some(&self.expanded_agent_groups),
+        );
         let Some(target) = rows
             .iter()
             .position(|row| &row.endpoint_id == endpoint_id && row.agent.pane_id == pane_id)
@@ -129,10 +142,32 @@ struct EndpointAgentRow {
     agent: super::agent_sidebar::AgentRow,
 }
 
+impl EndpointAgentRow {
+    /// Names this row's subagent group in `expanded_agent_groups`: pane ids repeat across
+    /// machines.
+    fn group_key(&self) -> String {
+        format!("{}/{}", self.endpoint_id.storage_key(), self.agent.pane_id)
+    }
+}
+
+impl super::agent_sidebar::AgentRowLike for EndpointAgentRow {
+    fn agent(&self) -> &super::agent_sidebar::AgentRow {
+        &self.agent
+    }
+
+    fn agent_mut(&mut self) -> &mut super::agent_sidebar::AgentRow {
+        &mut self.agent
+    }
+}
+
+/// Every machine's agents in panel order. With `expanded_groups`, each machine's workspaces
+/// fold their subagents under the caller, as the one-machine panel does; a custom agent view
+/// stays flat there too.
 fn agent_rows(
     endpoints: &[ClientShellEndpoint],
     active_endpoint_id: &ClientEndpointId,
     config: &ClientShellConfig,
+    expanded_groups: Option<&HashSet<String>>,
 ) -> Vec<EndpointAgentRow> {
     let mut rendered_rows = endpoints
         .iter()
@@ -156,7 +191,7 @@ fn agent_rows(
         .flatten()
         .collect::<HashMap<_, _>>();
 
-    super::aggregate_navigation::aggregate_agent_rows(
+    let (workspaces, rows): (Vec<_>, Vec<_>) = super::aggregate_navigation::aggregate_agent_rows(
         endpoints,
         active_endpoint_id,
         config.agent_panel_sort,
@@ -166,12 +201,28 @@ fn agent_rows(
         let key = (row.endpoint.endpoint_id.clone(), row.agent.pane_id.clone());
         let mut agent = rendered_rows.remove(&key)?;
         agent.focused &= row.endpoint.endpoint_id == active_endpoint_id;
-        Some(EndpointAgentRow {
-            endpoint_id: row.endpoint.endpoint_id.clone(),
-            machine_label: row.endpoint.label.to_owned(),
-            stale: row.endpoint.stale(),
-            agent,
-        })
+        Some((
+            Some((row.endpoint.endpoint_id, &row.agent.workspace_id)),
+            EndpointAgentRow {
+                endpoint_id: row.endpoint.endpoint_id.clone(),
+                machine_label: row.endpoint.label.to_owned(),
+                stale: row.endpoint.stale(),
+                agent,
+            },
+        ))
     })
-    .collect()
+    .unzip();
+    let custom_view = endpoints
+        .iter()
+        .find(|endpoint| &endpoint.endpoint_id == active_endpoint_id)
+        .and_then(|endpoint| endpoint.snapshot.as_deref())
+        .is_some_and(|snapshot| snapshot.agent_view_label.is_some());
+    match expanded_groups {
+        Some(expanded) if !custom_view => {
+            super::agent_sidebar::group_subagents_by(rows, &workspaces, |row| {
+                expanded.contains(&row.group_key())
+            })
+        }
+        _ => rows,
+    }
 }

@@ -31,6 +31,22 @@ pub(super) struct SubagentGroup {
 /// Columns a subagent row is indented under its caller.
 const SUBAGENT_INDENT: u16 = 2;
 
+/// A sidebar row that draws one agent: `AgentRow`, or the multi-machine panel's row around it.
+pub(super) trait AgentRowLike {
+    fn agent(&self) -> &AgentRow;
+    fn agent_mut(&mut self) -> &mut AgentRow;
+}
+
+impl AgentRowLike for AgentRow {
+    fn agent(&self) -> &AgentRow {
+        self
+    }
+
+    fn agent_mut(&mut self) -> &mut AgentRow {
+        self
+    }
+}
+
 /// Folds subagents under the agent that spawned them. Agents start their workers in their
 /// own workspace, so a workspace's lowest-numbered agent pane (its oldest) is taken as the
 /// caller and every other agent there as its subagent. A group sits where its first member
@@ -53,6 +69,16 @@ pub(super) fn group_subagents(
                 .map(|agent| agent.workspace_id.clone())
         })
         .collect::<Vec<_>>();
+    group_subagents_by(rows, &workspaces, |row| expanded.contains(&row.pane_id))
+}
+
+/// `group_subagents` for any row type. `workspaces[i]` is the workspace of row `i`, qualified
+/// by machine when the rows span several; `expanded` tells whether a caller's group is open.
+pub(super) fn group_subagents_by<T: AgentRowLike, W: PartialEq>(
+    rows: Vec<T>,
+    workspaces: &[Option<W>],
+    expanded: impl Fn(&T) -> bool,
+) -> Vec<T> {
     let number = |pane_id: &str| {
         pane_id
             .rsplit_once(":p")
@@ -79,33 +105,33 @@ pub(super) fn group_subagents(
             .min_by_key(|&member| {
                 rows[member]
                     .as_ref()
-                    .map_or(usize::MAX, |row| number(&row.pane_id))
+                    .map_or(usize::MAX, |row| number(&row.agent().pane_id))
             })
             .unwrap_or(index);
         let Some(mut caller_row) = rows[caller].take() else {
             continue;
         };
-        let subagents = members
+        let mut subagents = members
             .into_iter()
             .filter_map(|member| rows[member].take())
             .collect::<Vec<_>>();
         if let Some(status) = subagents
             .iter()
-            .map(|row| row.status)
+            .map(|row| row.agent().status)
             .max_by_key(|status| status_priority(*status))
         {
-            let expanded = expanded.contains(&caller_row.pane_id);
-            caller_row.group = Some(SubagentGroup {
+            let expanded = expanded(&caller_row);
+            caller_row.agent_mut().group = Some(SubagentGroup {
                 count: subagents.len(),
                 expanded,
                 status,
             });
             grouped.push(caller_row);
             if expanded {
-                grouped.extend(subagents.into_iter().map(|row| AgentRow {
-                    subagent: true,
-                    ..row
-                }));
+                for row in &mut subagents {
+                    row.agent_mut().subagent = true;
+                }
+                grouped.extend(subagents);
             }
         } else {
             grouped.push(caller_row);
@@ -183,19 +209,21 @@ pub(super) fn render_agent_panel(
         |row| row.rows.len(),
         |buffer, rect, row, hits| {
             hits.agents.push((rect, row.pane_id.clone()));
-            render_grouped_agent_row(buffer, rect, row, config, hits);
+            render_grouped_agent_row(buffer, rect, row, config, hits, &row.pane_id);
         },
     );
 }
 
 /// An agent row, indented when it is a subagent; a caller's row ends in a `▸ N` / `▾ N`
-/// badge that folds or shows its subagents.
-fn render_grouped_agent_row(
+/// badge that folds or shows its subagents. `group_key` names the group in
+/// `expanded_agent_groups`.
+pub(super) fn render_grouped_agent_row(
     buffer: &mut Buffer,
     rect: Rect,
     row: &AgentRow,
     config: &ClientShellConfig,
     hits: &mut ShellHitMap,
+    group_key: &str,
 ) {
     let Some(group) = &row.group else {
         let indent = if row.subagent {
@@ -228,7 +256,8 @@ fn render_grouped_agent_row(
         &badge,
         Style::default().fg(color).add_modifier(Modifier::BOLD),
     );
-    hits.agent_group_toggles.push((toggle, row.pane_id.clone()));
+    hits.agent_group_toggles
+        .push((toggle, group_key.to_owned()));
 }
 
 pub(super) fn render_agent_panel_header(

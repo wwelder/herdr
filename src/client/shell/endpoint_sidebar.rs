@@ -560,6 +560,7 @@ pub(super) fn render_expanded(
         state.endpoints,
         state.active_endpoint_id,
         config,
+        state.expanded_agent_groups,
         state.agent_scroll,
         hits,
     );

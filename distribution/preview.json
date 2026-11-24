@@ -2,75 +2,75 @@
   "schema_version": 2,
   "channel": "preview",
   "base_version": "0.9.5",
-  "build_id": "2026-11-20-5e7ee12a642d",
-  "commit": "5e7ee12a642db106d7afb48b29d2ae2c4467e507",
-  "commit_time": 1795182574,
-  "built_at": "2026-11-20T19:01:38Z",
+  "build_id": "2026-11-23-7d91601a0d6e",
+  "commit": "7d91601a0d6eca18907637d00fa1652f58b714a1",
+  "commit_time": 1795477920,
+  "built_at": "2026-11-24T00:05:19Z",
   "protocol": 22,
   "endpoint_generation": 1,
-  "notes": "Herdr fork preview (wwelder/herdr): answer a choices-only card in your own words; the APM adds other machines' reports\n\nSource: 5e7ee12a642db106d7afb48b29d2ae2c4467e507.\n\n- `feed.act` takes text alone on any card that asks something, not only on a card with `input`. A card from `herdr feed ask` tells the asking agent `none of the choices you offered. They wrote: \"<text>\"`. A card a script polls gets a reply file with `\"action\": null` and the text. A card answered by an `on-reply` handler still takes text only when it has `input`.\n- The APM this host pushes to the Live Activity and the widgets adds what other machines report to it: every file under `live-activity/remote/<name>` in herdr's config directory that is younger than 150 s. A machine reports by writing the output of `herdr fleet-apm \"$HOME\"` to that file over ssh, once a minute. Counts and the headline are still this host's own.\n\nAll five assets were built by the manual Build artifacts workflow (run 44795973086).\n\nUpdate with `herdr update` on the preview channel.",
+  "notes": "Herdr fork preview (wwelder/herdr): the multi-machine agent panel folds subagents under their caller\n\nSource: 7d91601a0d6eca18907637d00fa1652f58b714a1.\n\n- With saved machines (`herdr machine`), the agent panel now folds each machine's subagents under their workspace's caller, with the same `\u25b8 N` badge as the one-machine panel. Click the badge to show or fold them; the rest of the row still focuses the caller. A group's open state is kept per machine, since pane ids repeat across machines. Client-only: restart the client to see it.\n\nAll five assets were built by the manual Build artifacts workflow (run 45292453567).\n\nUpdate with `herdr update` on the preview channel.",
   "assets": {
     "linux-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-linux-x86_64",
-      "sha256": "280dd3e75c155a9a2f919fc89ec88ee6314fb13437443a2f60c12bc00ed5384e",
-      "size": 44317312
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-linux-x86_64",
+      "sha256": "48c7ede1a6c0219ca99992bff580d65fe97fdc214da3f25872f604ecc0a182ef",
+      "size": 44315792
     },
     "linux-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-linux-aarch64",
-      "sha256": "bd30a125bde37550c456dc909ecd60f1dc0aa1003c8e38d677ff1aa4b83ad5b3",
-      "size": 40823536
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-linux-aarch64",
+      "sha256": "132ab621d6719e751e6b0ba9d09cc9debb9d524d54d60d865ad210b750b23082",
+      "size": 40634632
     },
     "macos-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-macos-x86_64",
-      "sha256": "b1f5530c544514f5d7d0003e30942b5d225a4b5d9275217dafab03d631d764cc",
-      "size": 37604808
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-macos-x86_64",
+      "sha256": "7cc9973ad2e4526aa22813e16f6a14af18629ba3e7e06ffd215407a00378c963",
+      "size": 37603968
     },
     "macos-aarch64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-macos-aarch64",
-      "sha256": "8c08877f5c879b732866bec43ad92e4c6fc715e522a5af25da18f54c8dbf7d7e",
-      "size": 34695184
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-macos-aarch64",
+      "sha256": "be021ad1bbcca151e9a08df3874c9114fe56f13f7120526997b096a66c959c2b",
+      "size": 34667136
     },
     "windows-x86_64": {
-      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-windows-x86_64.zip",
-      "sha256": "140330734772b51b72a019f6878f9d16ae05994a04474ced3e462ac3019fd0de",
-      "size": 13717146,
+      "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-windows-x86_64.zip",
+      "sha256": "548424fe8f856064a8fa7a775b150acda9132547f3d9816432f102e260a02112",
+      "size": 13730875,
       "format": "zip"
     }
   },
   "builds": {
-    "2026-11-20-5e7ee12a642d": {
+    "2026-11-23-7d91601a0d6e": {
       "base_version": "0.9.5",
-      "commit": "5e7ee12a642db106d7afb48b29d2ae2c4467e507",
-      "commit_time": 1795182574,
-      "built_at": "2026-11-20T19:01:38Z",
+      "commit": "7d91601a0d6eca18907637d00fa1652f58b714a1",
+      "commit_time": 1795477920,
+      "built_at": "2026-11-24T00:05:19Z",
       "protocol": 22,
       "endpoint_generation": 1,
-      "tag": "preview-2026-11-20-5e7ee12a642d",
+      "tag": "preview-2026-11-23-7d91601a0d6e",
       "assets": {
         "linux-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-linux-x86_64",
-          "sha256": "280dd3e75c155a9a2f919fc89ec88ee6314fb13437443a2f60c12bc00ed5384e",
-          "size": 44317312
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-linux-x86_64",
+          "sha256": "48c7ede1a6c0219ca99992bff580d65fe97fdc214da3f25872f604ecc0a182ef",
+          "size": 44315792
         },
         "linux-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-linux-aarch64",
-          "sha256": "bd30a125bde37550c456dc909ecd60f1dc0aa1003c8e38d677ff1aa4b83ad5b3",
-          "size": 40823536
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-linux-aarch64",
+          "sha256": "132ab621d6719e751e6b0ba9d09cc9debb9d524d54d60d865ad210b750b23082",
+          "size": 40634632
         },
         "macos-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-macos-x86_64",
-          "sha256": "b1f5530c544514f5d7d0003e30942b5d225a4b5d9275217dafab03d631d764cc",
-          "size": 37604808
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-macos-x86_64",
+          "sha256": "7cc9973ad2e4526aa22813e16f6a14af18629ba3e7e06ffd215407a00378c963",
+          "size": 37603968
         },
         "macos-aarch64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-macos-aarch64",
-          "sha256": "8c08877f5c879b732866bec43ad92e4c6fc715e522a5af25da18f54c8dbf7d7e",
-          "size": 34695184
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-macos-aarch64",
+          "sha256": "be021ad1bbcca151e9a08df3874c9114fe56f13f7120526997b096a66c959c2b",
+          "size": 34667136
         },
         "windows-x86_64": {
-          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-20-5e7ee12a642d/herdr-windows-x86_64.zip",
-          "sha256": "140330734772b51b72a019f6878f9d16ae05994a04474ced3e462ac3019fd0de",
-          "size": 13717146,
+          "url": "https://github.com/wwelder/herdr/releases/download/preview-2026-11-23-7d91601a0d6e/herdr-windows-x86_64.zip",
+          "sha256": "548424fe8f856064a8fa7a775b150acda9132547f3d9816432f102e260a02112",
+          "size": 13730875,
           "format": "zip"
         }
       }

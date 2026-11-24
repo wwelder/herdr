@@ -46,6 +46,8 @@ pub(super) struct AggregateAgentRow<'a> {
     pub(super) endpoint: CachedEndpointSnapshot<'a>,
     pub(super) agent: &'a ClientShellAgent,
     pub(super) recency: u64,
+    /// See `agent_sidebar::last_active_times`; `None` sorts after every known time.
+    pub(super) last_active: Option<u64>,
 }
 
 pub(super) struct AggregateAgentTarget {
@@ -53,11 +55,25 @@ pub(super) struct AggregateAgentTarget {
     pub(super) pane_id: String,
 }
 
+/// Whether the active machine shows a custom agent view. Such a view lists what it matched
+/// flat: no subagent groups.
+pub(super) fn custom_agent_view(
+    endpoints: &[ClientShellEndpoint],
+    active_endpoint_id: &ClientEndpointId,
+) -> bool {
+    endpoints
+        .iter()
+        .find(|endpoint| &endpoint.endpoint_id == active_endpoint_id)
+        .and_then(|endpoint| endpoint.snapshot.as_deref())
+        .is_some_and(|snapshot| snapshot.agent_view_label.is_some())
+}
+
 pub(super) fn aggregate_agent_rows<'a>(
     endpoints: &'a [ClientShellEndpoint],
     active_endpoint_id: &ClientEndpointId,
     sort: crate::config::AgentPanelSortConfig,
 ) -> Vec<AggregateAgentRow<'a>> {
+    let grouped = !custom_agent_view(endpoints, active_endpoint_id);
     let active_index = endpoints
         .iter()
         .position(|endpoint| &endpoint.endpoint_id == active_endpoint_id);
@@ -83,6 +99,8 @@ pub(super) fn aggregate_agent_rows<'a>(
     if let Some(Ok(view)) = active_view {
         let mut rows = cached_endpoint_snapshots(endpoints)
             .flat_map(|endpoint| {
+                let last_active =
+                    super::agent_sidebar::last_active_times(endpoint.snapshot, grouped);
                 endpoint
                     .snapshot
                     .agents
@@ -93,6 +111,7 @@ pub(super) fn aggregate_agent_rows<'a>(
                             .get(&agent.pane_id)
                             .copied()
                             .unwrap_or_default(),
+                        last_active: last_active.get(agent.pane_id.as_str()).copied(),
                         endpoint,
                         agent,
                     })
@@ -132,6 +151,7 @@ pub(super) fn aggregate_agent_rows<'a>(
 
     let mut rows = cached_endpoint_snapshots(endpoints)
         .flat_map(|endpoint| {
+            let last_active = super::agent_sidebar::last_active_times(endpoint.snapshot, grouped);
             super::agent_sidebar::ordered_agent_pane_ids(endpoint.snapshot, sort)
                 .into_iter()
                 .filter_map(move |pane_id| {
@@ -146,6 +166,7 @@ pub(super) fn aggregate_agent_rows<'a>(
                             .get(&pane_id)
                             .copied()
                             .unwrap_or_default(),
+                        last_active: last_active.get(pane_id.as_str()).copied(),
                         endpoint,
                         agent,
                     })
@@ -165,6 +186,7 @@ fn sort_aggregate_rows(
             (
                 row.endpoint.stale(),
                 std::cmp::Reverse(status_priority(row.agent.agent_status)),
+                std::cmp::Reverse(row.last_active),
                 std::cmp::Reverse(row.recency),
             )
         });

@@ -3098,3 +3098,76 @@ fn aggregate_agents_fold_each_machines_subagents_under_their_caller() {
     state.compose(100, 28).expect("folded again");
     assert_eq!(rows(&state), [caller(true), caller(false)]);
 }
+
+#[test]
+fn aggregate_priority_orders_each_status_by_reported_last_activity() {
+    use crate::api::schema::AgentStatus;
+
+    // `state_change_seq` and the order the client meets the machines in both say the opposite
+    // of what the hosts report.
+    let pane = |pane_id: &str, workspace_id: &str, status, seq, last_active: Option<u64>| {
+        ClientShellAgent {
+            pane_id: pane_id.into(),
+            workspace_id: workspace_id.into(),
+            focused: false,
+            tokens: last_active
+                .map(|time| ("last_active".to_owned(), time.to_string()))
+                .into_iter()
+                .collect(),
+            ..agent(pane_id, status, seq)
+        }
+    };
+    let with_workspaces = |count: usize| {
+        let mut projected = snapshot();
+        for index in 2..=count {
+            let mut workspace = projected.workspaces[0].clone();
+            workspace.workspace_id = format!("ws_{index}");
+            projected.workspaces.push(workspace);
+        }
+        projected
+    };
+    let mut config = Config::default();
+    config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    let profile = remote_profile();
+    let remote_id = ClientEndpointId::Ssh(profile.id.clone());
+    state.set_endpoint_catalog(&[profile]);
+    state.set_endpoint_status(&remote_id, ClientEndpointStatus::Online);
+
+    let mut local = with_workspaces(3);
+    local.agents = vec![
+        pane("w1:p1", "ws_1", AgentStatus::Idle, 9, Some(100)),
+        pane("w2:p1", "ws_2", AgentStatus::Idle, 1, Some(300)),
+        // No report from its host: after every agent with one.
+        pane("w3:p1", "ws_3", AgentStatus::Idle, 99, None),
+    ];
+    state.set_snapshot(Box::new(local));
+    state.set_pane_surface(surface());
+    let mut remote = with_workspaces(2);
+    remote.boot_id = "remote-boot".into();
+    remote.agents = vec![
+        pane("w1:p1", "ws_1", AgentStatus::Idle, 1, Some(200)),
+        // A subagent: folded, and its own later time does not move its caller's group.
+        pane("w1:p2", "ws_1", AgentStatus::Idle, 2, Some(999)),
+        pane("w2:p1", "ws_2", AgentStatus::Blocked, 1, Some(50)),
+    ];
+    state.set_endpoint_snapshot(&remote_id, Box::new(remote));
+
+    state.compose(100, 40).expect("aggregate panel");
+    let rows = state
+        .hits
+        .endpoint_agents
+        .iter()
+        .map(|(_, endpoint_id, pane_id)| (endpoint_id.is_local(), pane_id.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        rows,
+        [
+            (false, "w2:p1"),
+            (true, "w2:p1"),
+            (false, "w1:p1"),
+            (true, "w1:p1"),
+            (true, "w3:p1"),
+        ]
+    );
+}

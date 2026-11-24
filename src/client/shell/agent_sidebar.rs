@@ -79,12 +79,6 @@ pub(super) fn group_subagents_by<T: AgentRowLike, W: PartialEq>(
     workspaces: &[Option<W>],
     expanded: impl Fn(&T) -> bool,
 ) -> Vec<T> {
-    let number = |pane_id: &str| {
-        pane_id
-            .rsplit_once(":p")
-            .and_then(|(_, number)| crate::workspace::decode_public_number(number))
-            .unwrap_or(usize::MAX)
-    };
     let mut rows = rows.into_iter().map(Some).collect::<Vec<_>>();
     let mut grouped = Vec::with_capacity(rows.len());
     for index in 0..rows.len() {
@@ -105,7 +99,7 @@ pub(super) fn group_subagents_by<T: AgentRowLike, W: PartialEq>(
             .min_by_key(|&member| {
                 rows[member]
                     .as_ref()
-                    .map_or(usize::MAX, |row| number(&row.agent().pane_id))
+                    .map_or(usize::MAX, |row| pane_number(&row.agent().pane_id))
             })
             .unwrap_or(index);
         let Some(mut caller_row) = rows[caller].take() else {
@@ -140,6 +134,59 @@ pub(super) fn group_subagents_by<T: AgentRowLike, W: PartialEq>(
     grouped
 }
 
+/// A pane's public number in its workspace: the workspace's oldest pane has the lowest.
+fn pane_number(pane_id: &str) -> usize {
+    pane_id
+        .rsplit_once(":p")
+        .and_then(|(_, number)| crate::workspace::decode_public_number(number))
+        .unwrap_or(usize::MAX)
+}
+
+/// The metadata token in which an agent's host reports when the agent last did something, in
+/// unix seconds. The `herdr-ago` ticker sets it next to the `$ago` label it is shown as.
+const LAST_ACTIVE_TOKEN: &str = "last_active";
+
+/// When each agent pane of `snapshot` last did something, in unix seconds, for the priority
+/// sort: within a status the latest comes first. Unlike `state_change_seq` and the order the
+/// client met the agents in, it means the same on every machine and outlives a restart.
+///
+/// An agent whose host reports no time is absent. So is a working agent: its time moves with
+/// every report, which would reshuffle the working rows each minute. With `grouped`, a
+/// subagent takes its caller's time, so a folded group sits where its caller's row belongs.
+pub(super) fn last_active_times(
+    snapshot: &ClientShellSnapshot,
+    grouped: bool,
+) -> HashMap<&str, u64> {
+    let mut callers = HashMap::<&str, &crate::protocol::ClientShellAgent>::new();
+    if grouped {
+        for agent in &snapshot.agents {
+            let caller = callers.entry(agent.workspace_id.as_str()).or_insert(agent);
+            if pane_number(&agent.pane_id) < pane_number(&caller.pane_id) {
+                *caller = agent;
+            }
+        }
+    }
+    snapshot
+        .agents
+        .iter()
+        .filter(|agent| agent.agent_status != crate::api::schema::AgentStatus::Working)
+        .filter_map(|agent| {
+            let source = callers
+                .get(agent.workspace_id.as_str())
+                .copied()
+                .unwrap_or(agent);
+            let time = source
+                .tokens
+                .iter()
+                .find(|(name, _)| name == LAST_ACTIVE_TOKEN)?
+                .1
+                .parse()
+                .ok()?;
+            Some((agent.pane_id.as_str(), time))
+        })
+        .collect()
+}
+
 pub(super) fn ordered_agent_pane_ids(
     snapshot: &ClientShellSnapshot,
     sort: crate::config::AgentPanelSortConfig,
@@ -159,9 +206,11 @@ pub(super) fn ordered_agent_pane_ids(
     }
     let mut agents = snapshot.agents.iter().collect::<Vec<_>>();
     if sort == crate::config::AgentPanelSortConfig::Priority {
+        let last_active = last_active_times(snapshot, true);
         agents.sort_by_key(|agent| {
             (
                 std::cmp::Reverse(status_priority(agent.agent_status)),
+                std::cmp::Reverse(last_active.get(agent.pane_id.as_str()).copied()),
                 std::cmp::Reverse(agent.state_change_seq),
             )
         });

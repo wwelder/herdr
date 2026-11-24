@@ -212,11 +212,7 @@ fn agent_rows(
         ))
     })
     .unzip();
-    let custom_view = endpoints
-        .iter()
-        .find(|endpoint| &endpoint.endpoint_id == active_endpoint_id)
-        .and_then(|endpoint| endpoint.snapshot.as_deref())
-        .is_some_and(|snapshot| snapshot.agent_view_label.is_some());
+    let custom_view = super::aggregate_navigation::custom_agent_view(endpoints, active_endpoint_id);
     match expanded_groups {
         Some(expanded) if !custom_view => {
             super::agent_sidebar::group_subagents_by(rows, &workspaces, |row| {

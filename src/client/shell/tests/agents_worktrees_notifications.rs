@@ -1688,6 +1688,55 @@ fn semantic_notifications_use_client_policy_and_stable_navigation_targets() {
 }
 
 #[test]
+fn priority_sort_orders_a_status_by_reported_last_activity_except_working() {
+    let mut projected = snapshot();
+    for index in 2..=4 {
+        let mut workspace = projected.workspaces[0].clone();
+        workspace.workspace_id = format!("ws_{index}");
+        projected.workspaces.push(workspace);
+    }
+    let agent = |pane_id: &str, workspace_id: &str, agent_status, state_change_seq, time: u64| {
+        ClientShellAgent {
+            pane_id: pane_id.into(),
+            workspace_id: workspace_id.into(),
+            tab_id: "tab_1".into(),
+            name: Some(pane_id.into()),
+            display_agent: None,
+            agent: Some("claude".into()),
+            title: None,
+            terminal_title: None,
+            terminal_title_stripped: None,
+            agent_status,
+            state_change_seq,
+            state_labels: Vec::new(),
+            tokens: vec![("last_active".into(), time.to_string())],
+            focused: false,
+        }
+    };
+    projected.agents = vec![
+        // Idle: the reported time wins over `state_change_seq`.
+        agent("w1:p1", "ws_1", AgentStatus::Idle, 5, 100),
+        agent("w2:p1", "ws_2", AgentStatus::Idle, 1, 200),
+        // Working: the time moves with every report, so the state-change order stays.
+        agent("w3:p1", "ws_3", AgentStatus::Working, 3, 1),
+        agent("w4:p1", "ws_4", AgentStatus::Working, 2, 999),
+    ];
+    let mut config = Config::default();
+    config.ui.agent_panel_sort = crate::config::AgentPanelSortConfig::Priority;
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&config));
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.compose(106, 30).expect("agent panel");
+    let rows = state
+        .hits
+        .agents
+        .iter()
+        .map(|(_, pane_id)| pane_id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(rows, ["w3:p1", "w4:p1", "w2:p1", "w1:p1"]);
+}
+
+#[test]
 fn subagents_fold_under_their_workspace_caller_until_its_badge_is_clicked() {
     let mut projected = snapshot();
     let mut other = projected.workspaces[0].clone();
